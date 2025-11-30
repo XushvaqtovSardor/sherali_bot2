@@ -388,27 +388,15 @@ export class BotService implements OnModuleInit {
     this.bot.callbackQuery(/^kurs:(teachers|kabinets):(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery();
       const category = ctx.match[1];
-      const group = ctx.match[2];
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      const session = this.getSession(ctx.from.id);
-      session.category = category;
-      session.fakultet = group;
-      session.step = "guruh";
-
-      const message =
-        category === "teachers"
-          ? this.translationService.t("selectGroup", lang)
-          : this.translationService.t("selectGroup", lang);
-
-      await ctx.editMessageText(message, {
-        reply_markup: this.keyboardService.getKursKeyboard(
-          category,
-          group,
-          lang
-        ),
-      });
+      await ctx.editMessageText(
+        this.translationService.t("underDevelopment", lang),
+        {
+          reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+        }
+      );
     });
 
     this.bot.callbackQuery(

@@ -61,6 +61,9 @@ export class TranslationService {
       
       magistr1: "1-курс магистратура",
       magistr2: "2-курс магистратура",
+
+      
+      underDevelopment: "🚧 Этот раздел находится в разработке. Скоро будет доступен!",
     },
     en: {
       
@@ -111,6 +114,9 @@ export class TranslationService {
       
       magistr1: "1st year master",
       magistr2: "2nd year master",
+
+      
+      underDevelopment: "🚧 This section is under development. Coming soon!",
     },
     uz: {
       
@@ -162,6 +168,9 @@ export class TranslationService {
       
       magistr1: "1-kurs magistratura",
       magistr2: "2-kurs magistratura",
+
+      
+      underDevelopment: "🚧 Bu bo'lim ustida tuzatish ishlari olib borilmoqda. Tez orada!",
     },
   };
 
