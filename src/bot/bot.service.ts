@@ -314,12 +314,19 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText(
-        this.translationService.t("underDevelopment", lang),
-        {
-          reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+      try {
+        await ctx.editMessageText(
+          this.translationService.t("underDevelopment", lang),
+          {
+            reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+          }
+        );
+      } catch (error) {
+        // Ignore "message is not modified" error - happens when user clicks same button twice
+        if (!error.message?.includes("message is not modified")) {
+          this.logger.error("Error editing message for teachers/kabinets", error);
         }
-      );
+      }
     });
 
     this.bot.callbackQuery(/^fak:([^:]+):(.+)$/, async (ctx) => {
