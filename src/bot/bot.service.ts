@@ -39,11 +39,15 @@ export class BotService implements OnModuleInit {
     const token = this.configService.get<string>("BOT_TOKEN");
     this.bot = new Bot<BotContext>(token);
 
+    // Force delete webhook and wait to ensure no conflicts
     try {
       await this.bot.api.deleteWebhook({ drop_pending_updates: true });
-      this.logger.log("Webhook deleted, using long polling");
+      this.logger.log("Webhook deleted successfully");
+      // Wait a bit to ensure Telegram processes the webhook deletion
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
-      this.logger.warn("Could not delete webhook:", error.message);
+      this.logger.error("Failed to delete webhook:", error.message);
+      throw error;
     }
 
     this.setupCommands();
