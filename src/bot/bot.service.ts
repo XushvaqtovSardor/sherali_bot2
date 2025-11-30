@@ -324,7 +324,10 @@ export class BotService implements OnModuleInit {
       } catch (error) {
         // Ignore "message is not modified" error - happens when user clicks same button twice
         if (!error.message?.includes("message is not modified")) {
-          this.logger.error("Error editing message for teachers/kabinets", error);
+          this.logger.error(
+            "Error editing message for teachers/kabinets",
+            error
+          );
         }
       }
     });
@@ -490,7 +493,7 @@ export class BotService implements OnModuleInit {
           }
 
           await ctx.replyWithPhoto(screenshotPath, {
-            caption: `📅 ${guruh} - ${kurs}`,
+            caption: this.formatCaption(fakultet, kurs, guruh, false),
             reply_markup: this.keyboardService.getScheduleActionsKeyboard(
               category,
               fakultet,
@@ -667,7 +670,7 @@ export class BotService implements OnModuleInit {
           }
 
           await ctx.replyWithPhoto(screenshotPath, {
-            caption: `📅 ${guruh} - ${kurs}`,
+            caption: this.formatCaption(fakultet, kurs, guruh, true),
             reply_markup: this.keyboardService.getScheduleActionsKeyboard(
               category,
               fakultet,
@@ -938,6 +941,27 @@ export class BotService implements OnModuleInit {
       this.sessions.set(userId, {});
     }
     return this.sessions.get(userId);
+  }
+
+  private formatCaption(
+    fakultet: string | null,
+    kurs: string,
+    guruh: string,
+    isRefresh: boolean = false
+  ): string {
+    const now = new Date();
+    const date = now.toLocaleDateString('en-GB');
+    const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
+    const fakultetName = fakultet && fakultet !== 'none' ? fakultet : '';
+    const icon = isRefresh ? '🔄 Yangilangan jadval:' : '📅';
+    
+    let caption = `${icon}\n🧾 ${fakultetName ? fakultetName + ' – ' : ''}${kurs} – ${guruh}\n`;
+    caption += `🕒 ${date}, ${time}\n`;
+    caption += `xatolik xaqida xabar bering - @ksh247\n`;
+    caption += `📌 @tsuetimebot`;
+    
+    return caption;
   }
 
   getBot(): Bot<BotContext> {
