@@ -595,10 +595,6 @@ export class BotService implements OnModuleInit {
     this.bot.callbackQuery(
       /^refresh:([^:]+):([^:]+):([^:]+):(.+)$/,
       async (ctx) => {
-        await ctx.answerCallbackQuery(
-          this.translationService.t("loading", "uz")
-        );
-
         const category = ctx.match[1];
         const fakultet = ctx.match[2];
         const kurs = ctx.match[3];
@@ -606,6 +602,22 @@ export class BotService implements OnModuleInit {
 
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
+
+        // Answer callback query immediately to prevent timeout
+        try {
+          await ctx.answerCallbackQuery();
+        } catch (error) {
+          this.logger.warn("Could not answer callback query:", error.message);
+        }
+
+        // Edit message to show loading
+        try {
+          await ctx.editMessageCaption({
+            caption: this.translationService.t("loading", lang),
+          });
+        } catch (error) {
+          this.logger.warn("Could not edit caption:", error.message);
+        }
 
         try {
           const url = this.keyboardService.getUrlForGroup(
@@ -616,9 +628,16 @@ export class BotService implements OnModuleInit {
           );
 
           if (!url) {
-            await ctx.answerCallbackQuery(
-              this.translationService.t("noSchedule", lang)
-            );
+            await ctx.editMessageCaption({
+              caption: this.translationService.t("noSchedule", lang),
+              reply_markup: this.keyboardService.getScheduleActionsKeyboard(
+                category,
+                fakultet,
+                kurs,
+                guruh,
+                lang
+              ),
+            });
             return;
           }
 
@@ -654,9 +673,20 @@ export class BotService implements OnModuleInit {
           });
         } catch (error) {
           this.logger.error("Error refreshing screenshot", error);
-          await ctx.answerCallbackQuery(
-            this.translationService.t("error", lang)
-          );
+          try {
+            await ctx.editMessageCaption({
+              caption: this.translationService.t("error", lang),
+              reply_markup: this.keyboardService.getScheduleActionsKeyboard(
+                category,
+                fakultet,
+                kurs,
+                guruh,
+                lang
+              ),
+            });
+          } catch (editError) {
+            this.logger.error("Failed to edit message caption", editError);
+          }
         }
       }
     );
