@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  telegramId   BigInt    @unique @map("telegram_id")
+  firstName    String?   @map("first_name")
+  lastName     String?   @map("last_name")
+  username     String?
+  language     String    @default("uz")
+  lastChoice   Json?     @map("last_choice")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  
+  choices      Choice[]
+  logs         Log[]
+
+  @@map("users")
+}
+
+model Choice {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  fakultet  String
+  kurs      String
+  guruh     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("choices")
+}
+
+model JadvalCache {
+  id             Int      @id @default(autoincrement())
+  fakultet       String
+  kurs           String
+  guruh          String
+  screenshotPath String   @map("screenshot_path")
+  createdAt      DateTime @default(now()) @map("created_at")
+  expiresAt      DateTime @map("expires_at")
+
+  @@unique([fakultet, kurs, guruh])
+  @@index([expiresAt])
+  @@map("jadval_cache")
+}
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  metadata  Json?
+  timestamp DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([timestamp])
+  @@map("logs")
+}
+
+model Settings {
+  id                      Int      @id @default(autoincrement())
+  key                     String   @unique
+  value                   String
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
