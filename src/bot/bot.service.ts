@@ -53,23 +53,41 @@ export class BotService implements OnModuleInit {
     this.setupCommands();
     this.setupCallbacks();
 
+    // Set default commands for all users
     const defaultCommands = [
-      { command: "start", description: "Start bot" },
-      { command: "menu", description: "Main menu" },
-      { command: "language", description: "Change language" },
-      { command: "status", description: "Bot status" },
+      { command: "start", description: "Botni ishga tushirish" },
+      { command: "menu", description: "Asosiy menyu" },
+      { command: "language", description: "Tilni o'zgartirish" },
+      { command: "status", description: "Bot holati" },
     ];
-    await this.bot.api.setMyCommands(defaultCommands);
+    
+    try {
+      await this.bot.api.setMyCommands(defaultCommands);
+      this.logger.log("Default commands set successfully");
+    } catch (error) {
+      this.logger.error("Failed to set default commands:", error.message);
+    }
 
+    // Set admin commands for admin user
     const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-    if (adminId) {
+    this.logger.log(`Admin ID from config: ${adminId}`);
+    
+    if (adminId && !isNaN(adminId)) {
       const adminCommands = [
         ...defaultCommands,
         { command: "admin", description: "Admin panel" },
       ];
-      await this.bot.api.setMyCommands(adminCommands, {
-        scope: { type: "chat", chat_id: adminId },
-      });
+      
+      try {
+        await this.bot.api.setMyCommands(adminCommands, {
+          scope: { type: "chat", chat_id: adminId },
+        });
+        this.logger.log(`Admin commands set for user: ${adminId}`);
+      } catch (error) {
+        this.logger.error(`Failed to set admin commands for ${adminId}:`, error.message);
+      }
+    } else {
+      this.logger.warn("Admin ID not configured or invalid");
     }
 
     try {
@@ -950,17 +968,23 @@ export class BotService implements OnModuleInit {
     isRefresh: boolean = false
   ): string {
     const now = new Date();
-    const date = now.toLocaleDateString('en-GB');
-    const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    
-    const fakultetName = fakultet && fakultet !== 'none' ? fakultet : '';
-    const icon = isRefresh ? '🔄 Yangilangan jadval:' : '📅';
-    
-    let caption = `${icon}\n🧾 ${fakultetName ? fakultetName + ' – ' : ''}${kurs} – ${guruh}\n`;
+    const date = now.toLocaleDateString("en-GB");
+    const time = now.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const fakultetName = fakultet && fakultet !== "none" ? fakultet : "";
+    const icon = isRefresh ? "🔄 Yangilangan jadval:" : "📅";
+
+    let caption = `${icon}\n🧾 ${
+      fakultetName ? fakultetName + " – " : ""
+    }${kurs} – ${guruh}\n`;
     caption += `🕒 ${date}, ${time}\n`;
     caption += `xatolik xaqida xabar bering - @ksh247\n`;
     caption += `📌 @tsuetimebot`;
-    
+
     return caption;
   }
 
