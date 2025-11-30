@@ -11,11 +11,14 @@ export class FirebaseService {
 
   constructor(private configService: ConfigService) {
     const supabaseUrl = "https://hakejpynewtzcwgzdsyw.supabase.co";
-    const supabaseKey =
-      this.configService.get<string>("SUPABASE_KEY") ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha2VqcHluZXd0emN3Z3pkc3l3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNTE0OTU2MywiZXhwIjoyMDUwNzI1NTYzfQ.Rx-dtzaJSA9BJ6NR1M_VLAFCLkKQevKqpfB9lT1cTiM";
+    const supabaseKey = this.configService.get<string>("SUPABASE_KEY");
+
+    if (!supabaseKey) {
+      throw new Error("SUPABASE_KEY environment variable is required");
+    }
 
     this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.logger.log("Supabase client initialized");
   }
 
   async uploadScreenshot(
