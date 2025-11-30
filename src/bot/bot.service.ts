@@ -309,6 +309,19 @@ export class BotService implements OnModuleInit {
       }
     );
 
+    this.bot.callbackQuery(/^cat:(teachers|kabinets)$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      await ctx.editMessageText(
+        this.translationService.t("underDevelopment", lang),
+        {
+          reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+        }
+      );
+    });
+
     this.bot.callbackQuery(/^fak:([^:]+):(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery();
       const category = ctx.match[1];
