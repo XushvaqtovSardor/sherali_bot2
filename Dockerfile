@@ -1,5 +1,6 @@
 FROM node:20-alpine AS base
 
+# Install dependencies for Chromium and Prisma
 RUN apk add --no-cache \
     chromium \
     nss \
