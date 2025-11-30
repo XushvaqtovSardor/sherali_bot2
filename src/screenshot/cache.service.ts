@@ -221,11 +221,24 @@ export class CacheService {
       });
 
       if (cached) {
-        try {
-          await unlink(cached.screenshotPath);
-          this.logger.log(`Deleted file: ${cached.screenshotPath}`);
-        } catch (error) {
-          this.logger.error("Failed to delete screenshot file", error);
+        // Extract filename from Supabase URL and delete from cloud storage
+        const fileName = cached.screenshotPath.split("/").pop();
+        if (fileName && !cached.screenshotPath.startsWith("http")) {
+          // Only try to unlink if it's a local file path, not a URL
+          try {
+            await unlink(cached.screenshotPath);
+            this.logger.log(`Deleted local file: ${cached.screenshotPath}`);
+          } catch (error) {
+            this.logger.warn("Could not delete local file", error.message);
+          }
+        } else if (fileName) {
+          // Delete from Supabase if it's a URL
+          try {
+            await this.firebaseService.deleteScreenshot(fileName);
+            this.logger.log(`Deleted from Supabase: ${fileName}`);
+          } catch (error) {
+            this.logger.warn("Could not delete from Supabase", error.message);
+          }
         }
 
         await this.prisma.jadvalCache.delete({
@@ -256,11 +269,24 @@ export class CacheService {
       });
 
       if (cached) {
-        try {
-          await unlink(cached.screenshotPath);
-          this.logger.log(`Deleted file: ${cached.screenshotPath}`);
-        } catch (error) {
-          this.logger.error("Failed to delete screenshot file", error);
+        // Extract filename from Supabase URL and delete from cloud storage
+        const fileName = cached.screenshotPath.split("/").pop();
+        if (fileName && !cached.screenshotPath.startsWith("http")) {
+          // Only try to unlink if it's a local file path, not a URL
+          try {
+            await unlink(cached.screenshotPath);
+            this.logger.log(`Deleted local file: ${cached.screenshotPath}`);
+          } catch (error) {
+            this.logger.warn("Could not delete local file", error.message);
+          }
+        } else if (fileName) {
+          // Delete from Supabase if it's a URL
+          try {
+            await this.firebaseService.deleteScreenshot(fileName);
+            this.logger.log(`Deleted from Supabase: ${fileName}`);
+          } catch (error) {
+            this.logger.warn("Could not delete from Supabase", error.message);
+          }
         }
 
         await this.prisma.jadvalCache.delete({
