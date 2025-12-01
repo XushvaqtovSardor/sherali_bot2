@@ -12,8 +12,27 @@ export class KeyboardService {
   private teachers: any;
   private kabinets: any;
 
+  // Short ID mapping to keep callback data under 64 bytes
+  private facultyIdMap = {
+    "menejment fakulteti": "f1",
+    "IQTISODIYOT FAKULTETI": "f2",
+    "Raqamli Iqtisodiyot Fakulteti": "f3",
+    "Turizm Fakulteti": "f4",
+    "SOLIQ VA BUDJET HISOBI": "f5",
+    "BUXGALTERIYA HISOBI": "f6",
+    "MOLIYA FAKULTETI": "f7",
+    "BANK ISHI FAKULTETI": "f8",
+    POLOTSKIY: "f9",
+  };
+
+  private reverseFacultyIdMap: { [key: string]: string };
+
   constructor() {
-    
+    // Create reverse mapping
+    this.reverseFacultyIdMap = Object.fromEntries(
+      Object.entries(this.facultyIdMap).map(([k, v]) => [v, k])
+    );
+
     this.bakalavr = JSON.parse(
       fs.readFileSync(path.join(__dirname, "../../data.json"), "utf8")
     );
@@ -99,7 +118,6 @@ export class KeyboardService {
         data = this.bakalavr;
     }
 
-    
     if (
       category === "kechki" ||
       category === "masofaviy" ||
@@ -111,18 +129,17 @@ export class KeyboardService {
         keyboard.row();
       });
     } else if (category === "teachers" || category === "kabinets") {
-      
       const groups = Object.keys(data);
       groups.forEach((group, idx) => {
         keyboard.text(group, `kurs:${category}:${group}`);
         keyboard.row();
       });
     } else {
-      
       const faculties = Object.keys(data);
       faculties.forEach((fak, idx) => {
         const displayName = this.getFacultyDisplayName(fak, lang);
-        keyboard.text(displayName, `fak:${category}:${fak}`);
+        const shortId = this.encodeFacultyId(fak);
+        keyboard.text(displayName, `fak:${category}:${shortId}`);
         keyboard.row();
       });
     }
@@ -153,12 +170,11 @@ export class KeyboardService {
     } else if (category === "magistr") {
       data = this.magistr.Magistratura;
     } else if (category === "teachers") {
-      data = this.teachers.Teachers[fakultet]; 
+      data = this.teachers.Teachers[fakultet];
     } else if (category === "kabinets") {
-      data = this.kabinets.Kabinets[fakultet]; 
+      data = this.kabinets.Kabinets[fakultet];
     }
 
-    
     if (category === "teachers" || category === "kabinets") {
       const items = Object.keys(data);
       items.forEach((item, idx) => {
@@ -166,10 +182,17 @@ export class KeyboardService {
         keyboard.row();
       });
     } else {
-      
       const courses = Object.keys(data);
       courses.forEach((kurs, idx) => {
-        keyboard.text(kurs, `kurs:${category}:${fakultet || "none"}:${kurs}`);
+        // Normalize: decode if short, keep if full
+        const fullFakultet = this.decodeFacultyId(fakultet);
+        // Then encode to short format
+        const shortFak =
+          fullFakultet && fullFakultet !== "none"
+            ? this.encodeFacultyId(fullFakultet)
+            : "none";
+        const shortKurs = this.encodeCourse(kurs);
+        keyboard.text(kurs, `kurs:${category}:${shortFak}:${shortKurs}`);
         keyboard.row();
       });
     }
@@ -206,17 +229,35 @@ export class KeyboardService {
 
     const groupNames = Object.keys(groups);
     groupNames.forEach((guruh, idx) => {
+      // Always ensure we encode - even if we received full names from old callbacks
+      // First normalize: if fakultet is a full name, keep it; if it's a short ID, decode it
+      const fullFakultet = this.decodeFacultyId(fakultet);
+      const fullKurs = this.decodeCourse(kurs);
+
+      // Then encode to short format for the button
+      const shortFak =
+        fullFakultet && fullFakultet !== "none"
+          ? this.encodeFacultyId(fullFakultet)
+          : "none";
+      const shortKurs = this.encodeCourse(fullKurs);
+
       keyboard.text(
         guruh,
-        `guruh:${category}:${fakultet || "none"}:${kurs}:${guruh}`
+        `guruh:${category}:${shortFak}:${shortKurs}:${guruh}`
       );
       if ((idx + 1) % 3 === 0) keyboard.row();
     });
 
     keyboard.row();
+    // Normalize and encode for back button
+    const fullFakultet = this.decodeFacultyId(fakultet);
+    const shortFak =
+      fullFakultet && fullFakultet !== "none"
+        ? this.encodeFacultyId(fullFakultet)
+        : "none";
     keyboard.text(
       lang === "ru" ? "◀️ Назад" : lang === "en" ? "◀️ Back" : "◀️ Orqaga",
-      `back:kurs:${category}:${fakultet || "none"}`
+      `back:kurs:${category}:${shortFak}`
     );
 
     return keyboard;
@@ -231,13 +272,24 @@ export class KeyboardService {
   ): InlineKeyboard {
     const keyboard = new InlineKeyboard();
 
+    // Normalize: decode if short, keep if full
+    const fullFakultet = this.decodeFacultyId(fakultet);
+    const fullKurs = this.decodeCourse(kurs);
+
+    // Then encode to short format
+    const shortFak =
+      fullFakultet && fullFakultet !== "none"
+        ? this.encodeFacultyId(fullFakultet)
+        : "none";
+    const shortKurs = this.encodeCourse(fullKurs);
+
     keyboard.text(
       lang === "ru"
         ? "🔄 Обновить"
         : lang === "en"
         ? "🔄 Refresh"
         : "🔄 Yangilash",
-      `refresh:${category}:${fakultet || "none"}:${kurs}:${guruh}`
+      `refresh:${category}:${shortFak}:${shortKurs}:${guruh}`
     );
     keyboard.row();
     keyboard.text(
@@ -304,23 +356,70 @@ export class KeyboardService {
   ): string | null {
     let data: any;
 
+    // Decode short IDs back to full names
+    const fullFakultet = this.decodeFacultyId(fakultet);
+    const fullKurs = this.decodeCourse(kurs);
+
     if (category === "bakalavr") {
-      data = this.bakalavr[fakultet]?.[kurs]?.[guruh];
+      data = this.bakalavr[fullFakultet]?.[fullKurs]?.[guruh];
     } else if (category === "kechki") {
-      data = this.kechki.Kechki_talim[kurs]?.[guruh];
+      data = this.kechki.Kechki_talim[fullKurs]?.[guruh];
     } else if (category === "masofaviy") {
-      data = this.masofaviy.Masofaviy_talim[kurs]?.[guruh];
+      data = this.masofaviy.Masofaviy_talim[fullKurs]?.[guruh];
     } else if (category === "magistr") {
-      data = this.magistr.Magistratura[kurs]?.[guruh];
+      data = this.magistr.Magistratura[fullKurs]?.[guruh];
     } else if (category === "teachers") {
-      
-      data = this.teachers.Teachers[fakultet]?.[kurs];
+      data = this.teachers.Teachers[fullFakultet]?.[fullKurs];
     } else if (category === "kabinets") {
-      
-      data = this.kabinets.Kabinets[fakultet]?.[kurs];
+      data = this.kabinets.Kabinets[fullFakultet]?.[fullKurs];
     }
 
     return data || null;
+  }
+
+  // Encode faculty name to short ID
+  private encodeFacultyId(fakultet: string): string {
+    // Handle case where input might already be a short ID
+    if (fakultet && fakultet.startsWith("f") && fakultet.length <= 3) {
+      return fakultet;
+    }
+    return this.facultyIdMap[fakultet] || fakultet;
+  }
+
+  // Decode short ID back to faculty name
+  decodeFacultyId(id: string): string {
+    // If it's a short ID (f1, f2, etc.), decode it
+    if (id && id.startsWith("f") && id.length <= 3) {
+      return this.reverseFacultyIdMap[id] || id;
+    }
+    // Otherwise it's already a full name, return as-is
+    return id;
+  }
+
+  // Encode course name to short format
+  private encodeCourse(kurs: string): string {
+    // Handle case where input might already be encoded
+    if (kurs && kurs.endsWith("k") && kurs.length <= 3 && !kurs.includes("-")) {
+      return kurs;
+    }
+    // Convert "1-kurs" to "1k", "2-kurs" to "2k", etc.
+    return kurs.replace("-kurs", "k");
+  }
+
+  // Decode course back to full format
+  decodeCourse(encoded: string): string {
+    // Convert "1k" to "1-kurs", "2k" to "2-kurs", etc.
+    // But only if it looks like an encoded format (short, ends with k, no hyphen)
+    if (
+      encoded &&
+      encoded.endsWith("k") &&
+      encoded.length <= 3 &&
+      !encoded.includes("-")
+    ) {
+      return encoded.replace("k", "-kurs");
+    }
+    // Otherwise it's already in full format
+    return encoded;
   }
 
   getAdminKeyboard(lang: string = "uz"): InlineKeyboard {

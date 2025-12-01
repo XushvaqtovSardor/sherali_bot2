@@ -52,12 +52,35 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
       throw new Error("Browser not initialized");
     }
 
-    if (!this.pages.has(key)) {
-      const page = await this.browser.newPage();
-      await page.setViewport({ width: 3840, height: 2160 });
-      this.pages.set(key, page);
+    // Check if page exists and is still valid
+    const existingPage = this.pages.get(key);
+    if (existingPage) {
+      try {
+        // Test if page is still valid by checking if it's closed
+        if (existingPage.isClosed()) {
+          this.logger.warn(`Page for ${key} was closed, creating new one`);
+          this.pages.delete(key);
+        } else {
+          return existingPage;
+        }
+      } catch (error) {
+        this.logger.warn(`Page for ${key} is invalid, creating new one`);
+        this.pages.delete(key);
+      }
     }
-    return this.pages.get(key);
+
+    // Create new page
+    const page = await this.browser.newPage();
+    await page.setViewport({ width: 3840, height: 2160 });
+
+    // Handle page crash events
+    page.on("error", (error) => {
+      this.logger.error(`Page error for ${key}:`, error.message);
+      this.pages.delete(key);
+    });
+
+    this.pages.set(key, page);
+    return page;
   }
 
   async closePage(key: string) {

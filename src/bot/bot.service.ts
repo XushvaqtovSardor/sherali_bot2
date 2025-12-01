@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from "@nestjs/common";
 import { Bot, Context, InputFile } from "grammy";
 import { ConfigService } from "@nestjs/config";
 import { UserService } from "./services/user.service";
@@ -21,10 +26,11 @@ type BotContext = Context & {
 };
 
 @Injectable()
-export class BotService implements OnModuleInit {
+export class BotService implements OnModuleInit, OnModuleDestroy {
   private bot: Bot<BotContext>;
   private readonly logger = new Logger(BotService.name);
   private sessions: Map<number, SessionData> = new Map();
+  private isRunning = false;
 
   constructor(
     private configService: ConfigService,
@@ -44,9 +50,28 @@ export class BotService implements OnModuleInit {
       await this.bot.api.deleteWebhook({ drop_pending_updates: true });
       this.logger.log("Webhook deleted successfully");
       // Wait a bit to ensure Telegram processes the webhook deletion
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     } catch (error) {
       this.logger.error("Failed to delete webhook:", error.message);
+      throw error;
+    }
+
+    // Check if another instance is running by trying to get updates
+    try {
+      const me = await this.bot.api.getMe();
+      this.logger.log(`Bot authenticated as: ${me.username} (ID: ${me.id})`);
+    } catch (error) {
+      if (error.error_code === 409) {
+        this.logger.error(
+          "Another bot instance is already running. Please stop it first."
+        );
+        this.logger.error(
+          "If running in Docker, make sure only one container is running."
+        );
+        throw new Error(
+          "Conflict: Another bot instance is running. Stop it before starting a new one."
+        );
+      }
       throw error;
     }
 
@@ -60,7 +85,7 @@ export class BotService implements OnModuleInit {
       { command: "language", description: "Tilni o'zgartirish" },
       { command: "status", description: "Bot holati" },
     ];
-    
+
     try {
       await this.bot.api.setMyCommands(defaultCommands);
       this.logger.log("Default commands set successfully");
@@ -71,31 +96,58 @@ export class BotService implements OnModuleInit {
     // Set admin commands for admin user
     const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
     this.logger.log(`Admin ID from config: ${adminId}`);
-    
+
     if (adminId && !isNaN(adminId)) {
       const adminCommands = [
         ...defaultCommands,
         { command: "admin", description: "Admin panel" },
       ];
-      
+
       try {
         await this.bot.api.setMyCommands(adminCommands, {
           scope: { type: "chat", chat_id: adminId },
         });
         this.logger.log(`Admin commands set for user: ${adminId}`);
       } catch (error) {
-        this.logger.error(`Failed to set admin commands for ${adminId}:`, error.message);
+        this.logger.error(
+          `Failed to set admin commands for ${adminId}:`,
+          error.message
+        );
       }
     } else {
       this.logger.warn("Admin ID not configured or invalid");
     }
 
     try {
-      this.bot.start();
-      this.logger.log("Bot started successfully");
+      this.isRunning = true;
+      this.bot.start({
+        onStart: (botInfo) => {
+          this.logger.log(`Bot @${botInfo.username} started successfully`);
+        },
+      });
     } catch (error) {
-      this.logger.error("Failed to start bot:", error.message);
+      this.isRunning = false;
+      if (error.error_code === 409) {
+        this.logger.error(
+          "Conflict: Another bot instance is running. Stopping this instance."
+        );
+      } else {
+        this.logger.error("Failed to start bot:", error.message);
+      }
       throw error;
+    }
+  }
+
+  async onModuleDestroy() {
+    this.logger.log("Shutting down bot...");
+    if (this.bot && this.isRunning) {
+      try {
+        await this.bot.stop();
+        this.isRunning = false;
+        this.logger.log("Bot stopped successfully");
+      } catch (error) {
+        this.logger.error("Error stopping bot:", error.message);
+      }
     }
   }
 
@@ -353,7 +405,8 @@ export class BotService implements OnModuleInit {
     this.bot.callbackQuery(/^fak:([^:]+):(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery();
       const category = ctx.match[1];
-      const fakultet = ctx.match[2];
+      const fakultetId = ctx.match[2];
+      const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -379,7 +432,8 @@ export class BotService implements OnModuleInit {
       async (ctx) => {
         await ctx.answerCallbackQuery();
         const category = ctx.match[1];
-        const kurs = ctx.match[2];
+        const kursId = ctx.match[2];
+        const kurs = this.keyboardService.decodeCourse(kursId);
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
 
@@ -406,8 +460,10 @@ export class BotService implements OnModuleInit {
     this.bot.callbackQuery(/^kurs:([^:]+):([^:]+):(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery();
       const category = ctx.match[1];
-      const fakultet = ctx.match[2];
-      const kurs = ctx.match[3];
+      const fakultetId = ctx.match[2];
+      const kursId = ctx.match[3];
+      const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
+      const kurs = this.keyboardService.decodeCourse(kursId);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -450,9 +506,13 @@ export class BotService implements OnModuleInit {
         this.logger.log(`Guruh callback triggered: ${ctx.callbackQuery.data}`);
         await ctx.answerCallbackQuery();
         const category = ctx.match[1];
-        const fakultet = ctx.match[2];
-        const kurs = ctx.match[3];
+        const fakultetId = ctx.match[2];
+        const kursId = ctx.match[3];
         const guruh = ctx.match[4];
+
+        // Decode short IDs back to full names
+        const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
+        const kurs = this.keyboardService.decodeCourse(kursId);
 
         this.logger.log(
           `Parsed: category=${category}, fakultet=${fakultet}, kurs=${kurs}, guruh=${guruh}`
@@ -466,8 +526,8 @@ export class BotService implements OnModuleInit {
         try {
           const url = this.keyboardService.getUrlForGroup(
             category,
-            fakultet !== "none" ? fakultet : null,
-            kurs,
+            fakultetId !== "none" ? fakultetId : null,
+            kursId,
             guruh
           );
 
@@ -629,9 +689,13 @@ export class BotService implements OnModuleInit {
       /^refresh:([^:]+):([^:]+):([^:]+):(.+)$/,
       async (ctx) => {
         const category = ctx.match[1];
-        const fakultet = ctx.match[2];
-        const kurs = ctx.match[3];
+        const fakultetId = ctx.match[2];
+        const kursId = ctx.match[3];
         const guruh = ctx.match[4];
+
+        // Decode short IDs
+        const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
+        const kurs = this.keyboardService.decodeCourse(kursId);
 
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
@@ -655,8 +719,8 @@ export class BotService implements OnModuleInit {
         try {
           const url = this.keyboardService.getUrlForGroup(
             category,
-            fakultet !== "none" ? fakultet : null,
-            kurs,
+            fakultetId !== "none" ? fakultetId : null,
+            kursId,
             guruh
           );
 
@@ -770,7 +834,8 @@ export class BotService implements OnModuleInit {
     this.bot.callbackQuery(/^back:kurs:([^:]+):(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery();
       const category = ctx.match[1];
-      const fakultet = ctx.match[2];
+      const fakultetId = ctx.match[2];
+      const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -807,7 +872,7 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText(message, {
+      await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
@@ -835,7 +900,7 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText(message, {
+      await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
@@ -865,7 +930,7 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText(message, {
+      await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
@@ -888,7 +953,7 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText(message, {
+      await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
@@ -904,7 +969,7 @@ export class BotService implements OnModuleInit {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
-      await ctx.editMessageText("🔄 Clearing cache...");
+      await this.safeEditMessageText(ctx, "🔄 Clearing cache...");
 
       try {
         const deletedCount = await this.screenshotService.clearAllCache();
@@ -915,12 +980,13 @@ export class BotService implements OnModuleInit {
           `💾 Database cleaned\n` +
           `🔴 Redis cleaned`;
 
-        await ctx.editMessageText(message, {
+        await this.safeEditMessageText(ctx, message, {
           reply_markup: this.keyboardService.getAdminKeyboard(lang),
         });
       } catch (error) {
         this.logger.error("Error clearing cache", error);
-        await ctx.editMessageText(
+        await this.safeEditMessageText(
+          ctx,
           "❌ Error clearing cache. Check logs for details.",
           {
             reply_markup: this.keyboardService.getAdminKeyboard(lang),
@@ -948,7 +1014,7 @@ export class BotService implements OnModuleInit {
         `📅 Active today: ${stats.today}\n` +
         `📈 Active this week: ${stats.thisWeek}`;
 
-      await ctx.editMessageText(message, {
+      await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
@@ -959,6 +1025,29 @@ export class BotService implements OnModuleInit {
       this.sessions.set(userId, {});
     }
     return this.sessions.get(userId);
+  }
+
+  // Helper method to safely edit messages, ignoring "message is not modified" errors
+  private async safeEditMessageText(
+    ctx: any,
+    text: string,
+    options?: any
+  ): Promise<void> {
+    try {
+      await ctx.editMessageText(text, options);
+    } catch (error) {
+      // Ignore "message is not modified" errors - happens when user clicks same button twice
+      if (
+        error.message?.includes("message is not modified") ||
+        (error.error_code === 400 &&
+          error.description?.includes("message is not modified"))
+      ) {
+        // Silently ignore this harmless error
+        return;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   private formatCaption(
