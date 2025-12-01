@@ -179,7 +179,7 @@ export class ScreenshotProcessor extends WorkerHost {
         }
 
         this.logger.log(`Screenshot saved to Firebase: ${filename}`);
-        
+
         // Increment counter and cleanup page immediately
         this.browserService.incrementScreenshotCount();
         await this.browserService.closePage(cacheKey);

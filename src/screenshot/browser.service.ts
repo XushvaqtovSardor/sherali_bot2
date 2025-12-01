@@ -16,10 +16,10 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   private screenshotCount = 0;
 
   async onModuleInit() {
-    try {
-      this.browser = await puppeteer.launch({
-        headless: true,
-        executablePath: this.getChromePath(),
+    // Try multiple browser configurations for maximum compatibility
+    const configs = [
+      {
+        name: "Standard (recommended)",
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -28,25 +28,63 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--disable-gpu",
           "--disable-features=IsolateOrigins,site-per-process",
           "--disable-web-security",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-renderer-backgrounding",
           "--window-size=1920x1080",
-          "--single-process", // Important for stability in containers
-          "--no-zygote", // Prevents memory issues
         ],
-        // Increase timeouts for slow servers
-        protocolTimeout: 60000,
-        // Handle crashes better
-        handleSIGINT: false,
-        handleSIGTERM: false,
-        handleSIGHUP: false,
-      });
-      this.logger.log("Browser initialized successfully");
-    } catch (error) {
-      this.logger.error("Failed to initialize browser:", error.message);
-      this.logger.warn("Screenshots will not be available");
+      },
+      {
+        name: "Minimal (fallback)",
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+        ],
+      },
+    ];
+
+    for (const config of configs) {
+      try {
+        this.logger.log(`Trying browser config: ${config.name}`);
+
+        this.browser = await puppeteer.launch({
+          headless: true,
+          executablePath: this.getChromePath(),
+          args: config.args,
+          protocolTimeout: 60000,
+          handleSIGINT: false,
+          handleSIGTERM: false,
+          handleSIGHUP: false,
+          ignoreDefaultArgs: ["--disable-extensions"],
+        });
+
+        // Test if browser is working
+        const version = await this.browser.version();
+        this.logger.log(`✅ Browser initialized successfully: ${version}`);
+        return; // Success!
+      } catch (error) {
+        this.logger.warn(`❌ Config "${config.name}" failed: ${error.message}`);
+
+        // Close browser if partially initialized
+        if (this.browser) {
+          try {
+            await this.browser.close();
+          } catch (e) {
+            // ignore
+          }
+          this.browser = null;
+        }
+      }
     }
+
+    // All configs failed
+    this.logger.error(
+      "💥 CRITICAL: All browser configurations failed! Screenshots will not work."
+    );
+    this.logger.error(
+      "Please ensure Chrome/Chromium is installed on the server:"
+    );
+    this.logger.error("  Ubuntu/Debian: apt-get install chromium-browser");
+    this.logger.error("  Alpine: apk add chromium");
   }
 
   async onModuleDestroy() {
@@ -68,7 +106,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     await this.ensureBrowserHealthy();
 
     if (!this.browser) {
-      throw new Error("Browser not initialized");
+      throw new Error(
+        "Browser not initialized - Chrome/Chromium may not be installed on server"
+      );
     }
 
     // Check if page exists and is still valid
@@ -159,13 +199,16 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
   async ensureBrowserHealthy(): Promise<void> {
     // Restart browser every 50 screenshots or if connection seems dead
-    const shouldRestart = this.screenshotCount >= 50 || await this.isBrowserDead();
-    
+    const shouldRestart =
+      this.screenshotCount >= 50 || (await this.isBrowserDead());
+
     if (shouldRestart && !this.isRestarting) {
       const timeSinceLastRestart = Date.now() - this.lastRestartTime;
       // Prevent rapid restarts (min 30 seconds between restarts)
       if (timeSinceLastRestart > 30000) {
-        this.logger.warn(`Restarting browser (screenshot count: ${this.screenshotCount})`);
+        this.logger.warn(
+          `Restarting browser (screenshot count: ${this.screenshotCount})`
+        );
         await this.restartBrowser();
       }
     }
@@ -187,7 +230,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
   async restartBrowser(): Promise<void> {
     this.isRestarting = true;
-    
+
     try {
       // Close all pages first
       for (const [key, page] of this.pages.entries()) {
@@ -201,7 +244,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         }
       }
       this.pages.clear();
-      
+
       // Close old browser
       if (this.browser) {
         try {
@@ -210,16 +253,16 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Error closing old browser: ${e.message}`);
         }
       }
-      
+
       // Wait a bit before restarting
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // Reinitialize browser
       await this.onModuleInit();
-      
+
       this.screenshotCount = 0;
       this.lastRestartTime = Date.now();
-      this.logger.log('Browser restarted successfully');
+      this.logger.log("Browser restarted successfully");
     } catch (error) {
       this.logger.error(`Failed to restart browser: ${error.message}`);
     } finally {
@@ -236,6 +279,13 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getChromePath(): string {
+    // Check environment variable first (from Dockerfile)
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      this.logger.log(`Using Chrome from env: ${envPath}`);
+      return envPath;
+    }
+
     const platform = process.platform;
 
     if (platform === "win32") {
@@ -249,7 +299,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
-            this.logger.log(`Using Chrome at: ${path}`);
+            this.logger.log(`✅ Using Chrome at: ${path}`);
             return path;
           }
         } catch (e) {
@@ -259,17 +309,22 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     } else if (platform === "darwin") {
       return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     } else {
+      // Linux - try multiple common paths
       const possiblePaths = [
-        "/usr/bin/google-chrome",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser", // Alpine, Debian
+        "/usr/bin/chromium", // Some distros
+        "/usr/bin/google-chrome", // Ubuntu with Chrome
+        "/usr/bin/google-chrome-stable",
+        process.env.CHROME_BIN, // Custom env var
       ];
 
       for (const path of possiblePaths) {
+        if (!path) continue;
+
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
-            this.logger.log(`Using Chrome at: ${path}`);
+            this.logger.log(`✅ Using Chrome at: ${path}`);
             return path;
           }
         } catch (e) {
@@ -278,7 +333,10 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    this.logger.warn("Chrome executable not found, using default");
+    this.logger.warn("⚠️ Chrome executable not found, using Puppeteer default");
+    this.logger.warn("If browser fails to start, install Chrome/Chromium:");
+    this.logger.warn("  Docker/Alpine: apk add chromium");
+    this.logger.warn("  Ubuntu/Debian: apt-get install chromium-browser");
     return undefined;
   }
 }
