@@ -77,6 +77,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.setupCommands();
     this.setupCallbacks();
+    this.setupErrorHandler();
 
     // Set default commands for all users
     const defaultCommands = [
@@ -151,6 +152,54 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private setupErrorHandler() {
+    this.bot.catch((err) => {
+      const ctx = err.ctx;
+      this.logger.error(`Error while handling update ${ctx.update.update_id}:`);
+      const e = err.error as any;
+
+      if (e.error_code === 403) {
+        // User blocked the bot - log and ignore
+        this.logger.warn(
+          `Bot was blocked by user ${ctx.from?.id} (@${ctx.from?.username})`
+        );
+        return;
+      }
+
+      if (
+        e.error_code === 400 &&
+        e.description?.includes("message is not modified")
+      ) {
+        // Message not modified - already handled by safeEditMessageText
+        return;
+      }
+
+      // Log other errors
+      this.logger.error(`Grammy error in ${e.method}:`, e.description);
+      this.logger.error("Error details:", e);
+    });
+  }
+
+  private handleBotError(error: any, ctx: any, operation: string) {
+    if (error.error_code === 403) {
+      this.logger.warn(
+        `User ${ctx.from?.id} (@${ctx.from?.username}) has blocked the bot during ${operation}`
+      );
+      return;
+    }
+
+    if (
+      error.error_code === 400 &&
+      error.description?.includes("message is not modified")
+    ) {
+      // Silently ignore
+      return;
+    }
+
+    this.logger.error(`Error during ${operation}:`, error.message);
+    throw error;
+  }
+
   private setupCommands() {
     this.bot.command("start", async (ctx) => {
       const telegramId = ctx.from.id;
@@ -170,18 +219,22 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      if (isNewUser) {
-        await ctx.reply(this.translationService.t("selectLanguage", "uz"), {
-          reply_markup: this.translationService.getLanguageKeyboard(),
-        });
-      } else {
-        const lang = user.language as Language;
-        await ctx.reply(this.translationService.t("welcome", lang), {
-          reply_markup: this.keyboardService.getCategoryKeyboard(lang),
-        });
-      }
+      try {
+        if (isNewUser) {
+          await ctx.reply(this.translationService.t("selectLanguage", "uz"), {
+            reply_markup: this.translationService.getLanguageKeyboard(),
+          });
+        } else {
+          const lang = user.language as Language;
+          await ctx.reply(this.translationService.t("welcome", lang), {
+            reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+          });
+        }
 
-      await this.loggerService.log(user.id, "start_command");
+        await this.loggerService.log(user.id, "start_command");
+      } catch (error) {
+        this.handleBotError(error, ctx, "start command");
+      }
     });
 
     this.bot.command("menu", async (ctx) => {
@@ -253,10 +306,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           await new Promise((resolve) => setTimeout(resolve, 50));
         } catch (error) {
           failCount++;
-          this.logger.warn(
-            `Failed to send message to user ${user.telegramId}:`,
-            error.message
-          );
+          if (error.error_code !== 403) {
+            // Log non-403 errors (403 = user blocked bot, which is expected)
+            this.logger.warn(
+              `Failed to send message to user ${user.telegramId}: ${
+                error.description || error.message
+              }`
+            );
+          }
         }
       }
 
@@ -326,6 +383,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           await new Promise((resolve) => setTimeout(resolve, 50));
         } catch (error) {
           failCount++;
+          if (error.error_code !== 403) {
+            this.logger.warn(
+              `Failed to send to user ${user.telegramId}: ${
+                error.description || error.message
+              }`
+            );
+          }
         }
       }
 
