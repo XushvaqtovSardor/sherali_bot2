@@ -11,6 +11,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser;
   private pages: Map<string, Page> = new Map();
   private readonly logger = new Logger(BrowserService.name);
+  private isRestarting = false;
+  private lastRestartTime = 0;
+  private screenshotCount = 0;
 
   async onModuleInit() {
     try {
@@ -23,8 +26,21 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--disable-dev-shm-usage",
           "--disable-accelerated-2d-canvas",
           "--disable-gpu",
+          "--disable-features=IsolateOrigins,site-per-process",
+          "--disable-web-security",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-renderer-backgrounding",
           "--window-size=1920x1080",
+          "--single-process", // Important for stability in containers
+          "--no-zygote", // Prevents memory issues
         ],
+        // Increase timeouts for slow servers
+        protocolTimeout: 60000,
+        // Handle crashes better
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
       });
       this.logger.log("Browser initialized successfully");
     } catch (error) {
@@ -48,6 +64,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getPage(key: string): Promise<Page> {
+    // Check browser health and restart if needed
+    await this.ensureBrowserHealthy();
+
     if (!this.browser) {
       throw new Error("Browser not initialized");
     }
@@ -71,6 +90,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
     // Create new page
     const page = await this.browser.newPage();
+
+    // Set longer timeout for slow servers
+    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(60000);
+
     await page.setViewport({ width: 3840, height: 2160 });
 
     // Handle page crash events
@@ -79,16 +103,132 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
       this.pages.delete(key);
     });
 
+    // Handle console errors from the page
+    page.on("pageerror", (error: Error) => {
+      this.logger.warn(`Page console error for ${key}:`, error.message);
+    });
+
+    // Disable unnecessary features to save memory
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      // Block unnecessary resources to speed up and reduce memory
+      const resourceType = request.resourceType();
+      if (["font", "media", "websocket"].includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
     this.pages.set(key, page);
     return page;
   }
-
-  async closePage(key: string) {
+  async closePage(key: string): Promise<void> {
     const page = this.pages.get(key);
     if (page) {
-      await page.close();
-      this.pages.delete(key);
+      try {
+        if (!page.isClosed()) {
+          // Remove all event listeners before closing
+          page.removeAllListeners();
+          await page.close();
+        }
+      } catch (error) {
+        this.logger.warn(`Error closing page ${key}:`, error.message);
+      } finally {
+        this.pages.delete(key);
+      }
     }
+  }
+
+  // Add method to periodically clean up old pages
+  async cleanupIdlePages(maxPages: number = 10): Promise<void> {
+    if (this.pages.size <= maxPages) {
+      return;
+    }
+
+    // Close oldest pages when we exceed the limit
+    const pagesToClose = this.pages.size - maxPages;
+    const keys = Array.from(this.pages.keys());
+
+    for (let i = 0; i < pagesToClose; i++) {
+      const key = keys[i];
+      await this.closePage(key);
+      this.logger.log(`Cleaned up idle page: ${key}`);
+    }
+  }
+
+  async ensureBrowserHealthy(): Promise<void> {
+    // Restart browser every 50 screenshots or if connection seems dead
+    const shouldRestart = this.screenshotCount >= 50 || await this.isBrowserDead();
+    
+    if (shouldRestart && !this.isRestarting) {
+      const timeSinceLastRestart = Date.now() - this.lastRestartTime;
+      // Prevent rapid restarts (min 30 seconds between restarts)
+      if (timeSinceLastRestart > 30000) {
+        this.logger.warn(`Restarting browser (screenshot count: ${this.screenshotCount})`);
+        await this.restartBrowser();
+      }
+    }
+  }
+
+  async isBrowserDead(): Promise<boolean> {
+    try {
+      if (!this.browser || !this.browser.connected) {
+        return true;
+      }
+      // Try to get browser version as a health check
+      await this.browser.version();
+      return false;
+    } catch (error) {
+      this.logger.warn(`Browser health check failed: ${error.message}`);
+      return true;
+    }
+  }
+
+  async restartBrowser(): Promise<void> {
+    this.isRestarting = true;
+    
+    try {
+      // Close all pages first
+      for (const [key, page] of this.pages.entries()) {
+        try {
+          if (!page.isClosed()) {
+            page.removeAllListeners();
+            await page.close();
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      this.pages.clear();
+      
+      // Close old browser
+      if (this.browser) {
+        try {
+          await this.browser.close();
+        } catch (e) {
+          this.logger.warn(`Error closing old browser: ${e.message}`);
+        }
+      }
+      
+      // Wait a bit before restarting
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Reinitialize browser
+      await this.onModuleInit();
+      
+      this.screenshotCount = 0;
+      this.lastRestartTime = Date.now();
+      this.logger.log('Browser restarted successfully');
+    } catch (error) {
+      this.logger.error(`Failed to restart browser: ${error.message}`);
+    } finally {
+      this.isRestarting = false;
+    }
+  }
+
+  incrementScreenshotCount(): void {
+    this.screenshotCount++;
   }
 
   getBrowser(): Browser {

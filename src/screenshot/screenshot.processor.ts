@@ -9,7 +9,7 @@ import { mkdir, unlink } from "fs/promises";
 import { ScreenshotJobData } from "./screenshot.service";
 import { FirebaseService } from "../firebase/firebase.service";
 
-@Processor("screenshot", { concurrency: 7 })
+@Processor("screenshot", { concurrency: 3 })
 export class ScreenshotProcessor extends WorkerHost {
   private readonly logger = new Logger(ScreenshotProcessor.name);
 
@@ -110,65 +110,111 @@ export class ScreenshotProcessor extends WorkerHost {
     const filepath = join(screenshotsDir, filename);
 
     let page: any = null;
-    try {
-      page = await this.browserService.getPage(cacheKey);
+    let retries = 2; // Allow 2 retries
+    let lastError: Error = null;
 
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+    while (retries >= 0) {
+      try {
+        // Cleanup idle pages before processing to prevent memory issues
+        await this.browserService.cleanupIdlePages(5);
 
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+        page = await this.browserService.getPage(cacheKey);
 
-      await page.evaluate(() => {
-        const selectors = [
-          "footer",
-          ".footer",
-          '[class*="footer"]',
-          '[id*="footer"]',
-          '[class*="contact"]',
-          '[class*="bottom"]',
-        ];
-
-        selectors.forEach((selector) => {
-          const elements = document.querySelectorAll(selector);
-          elements.forEach(
-            (el) => ((el as HTMLElement).style.display = "none")
+        // Navigate with better error handling
+        try {
+          await page.goto(url, {
+            waitUntil: "networkidle2",
+            timeout: 60000,
+          });
+        } catch (navError) {
+          this.logger.warn(
+            `First navigation attempt failed for ${cacheKey}, retrying with domcontentloaded...`
           );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await page.goto(url, {
+            waitUntil: "domcontentloaded",
+            timeout: 60000,
+          });
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        await page.evaluate(() => {
+          const selectors = [
+            "footer",
+            ".footer",
+            '[class*="footer"]',
+            '[id*="footer"]',
+            '[class*="contact"]',
+            '[class*="bottom"]',
+          ];
+
+          selectors.forEach((selector) => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(
+              (el) => ((el as HTMLElement).style.display = "none")
+            );
+          });
         });
-      });
 
-      await page.screenshot({
-        path: filepath as `${string}.jpeg`,
-        type: "jpeg",
-        quality: 100,
-        fullPage: true,
-      });
+        await page.screenshot({
+          path: filepath as `${string}.jpeg`,
+          type: "jpeg",
+          quality: 100,
+          fullPage: true,
+          timeout: 60000,
+        });
 
-      const firebaseUrl = await this.firebaseService.uploadScreenshot(
-        filepath,
-        filename
-      );
+        const firebaseUrl = await this.firebaseService.uploadScreenshot(
+          filepath,
+          filename
+        );
 
-      await this.cacheService.saveScreenshotByKey(cacheKey, firebaseUrl);
+        await this.cacheService.saveScreenshotByKey(cacheKey, firebaseUrl);
 
-      try {
-        await unlink(filepath);
-      } catch (error) {
-        this.logger.warn(`Failed to delete local file: ${filepath}`);
-      }
+        try {
+          await unlink(filepath);
+        } catch (error) {
+          this.logger.warn(`Failed to delete local file: ${filepath}`);
+        }
 
-      this.logger.log(`Screenshot saved to Firebase: ${filename}`);
-
-      return firebaseUrl;
-    } catch (error) {
-      this.logger.error(`Failed to capture screenshot for ${cacheKey}`, error);
-
-      // Clean up the page on error to get a fresh one next time
-      try {
+        this.logger.log(`Screenshot saved to Firebase: ${filename}`);
+        
+        // Increment counter and cleanup page immediately
+        this.browserService.incrementScreenshotCount();
         await this.browserService.closePage(cacheKey);
-      } catch (cleanupError) {
-        this.logger.warn(`Failed to cleanup page for ${cacheKey}`);
-      }
 
-      throw error;
+        return firebaseUrl;
+      } catch (error) {
+        lastError = error;
+        retries--;
+
+        this.logger.error(
+          `Failed to capture screenshot for ${cacheKey} (${retries} retries left)`
+        );
+        this.logger.error(`${error.constructor.name}: ${error.message}`);
+
+        // Clean up the crashed page
+        try {
+          await this.browserService.closePage(cacheKey);
+        } catch (cleanupError) {
+          this.logger.warn(
+            `Error during page cleanup: ${cleanupError.message}`
+          );
+        }
+
+        // If we have retries left, wait before trying again
+        if (retries >= 0) {
+          this.logger.log(`Waiting 5 seconds before retry...`);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
     }
+
+    // All retries failed
+    this.logger.error(
+      `All retries exhausted for ${cacheKey}. Last error: ${lastError?.message}`
+    );
+    throw lastError;
   }
 }
