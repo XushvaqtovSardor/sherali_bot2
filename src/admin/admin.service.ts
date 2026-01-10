@@ -1,81 +1,86 @@
 import { Injectable } from "@nestjs/common";
-import { UserService } from "../bot/services/user.service";
-import { CacheService } from "../screenshot/cache.service";
-import { LoggerService } from "../common/services/logger.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ConfigService } from "@nestjs/config";
+import { CacheService } from "../screenshot/cache.service";
+import { BotService } from "../bot/bot.service";
 
 @Injectable()
 export class AdminService {
   constructor(
-    private userService: UserService,
-    private cacheService: CacheService,
-    private loggerService: LoggerService,
     private prisma: PrismaService,
-    private configService: ConfigService
+    private cacheService: CacheService,
+    private botService: BotService
   ) {}
 
-  async getUsers(filters?: {
-    fakultet?: string;
-    kurs?: string;
-    guruh?: string;
-  }) {
-    if (filters && (filters.fakultet || filters.kurs || filters.guruh)) {
-      return this.userService.getUsersWithFilters(filters);
-    }
-    return this.userService.getAllUsers();
-  }
-
-  async getUserStats() {
-    return this.userService.getUserStats();
-  }
-
-  async getCache() {
-    return this.cacheService.getAllCached();
-  }
-
-  async getLogs(limit = 100) {
-    return this.loggerService.getRecentLogs(limit);
-  }
-
-  async getSettings() {
-    const settings = await this.prisma.settings.findMany();
-
-    const settingsMap = settings.reduce((acc, setting) => {
-      acc[setting.key] = setting.value;
-      return acc;
-    }, {});
+  async getDashboardStats() {
+    const totalUsers = await this.prisma.user.count();
+    const activeUsers = await this.prisma.user.count({
+      where: {
+        updatedAt: {
+          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
+        },
+      },
+    });
+    const cacheCount = await this.prisma.jadvalCache.count();
 
     return {
-      screenshotCacheDuration:
-        settingsMap["screenshot_cache_duration"] ||
-        this.configService.get<string>("SCREENSHOT_CACHE_DURATION"),
-      puppeteerConcurrency:
-        settingsMap["puppeteer_concurrency"] ||
-        this.configService.get<string>("PUPPETEER_CONCURRENCY"),
-      screenshotQuality:
-        settingsMap["screenshot_quality"] ||
-        this.configService.get<string>("SCREENSHOT_QUALITY"),
+      totalUsers,
+      activeUsers,
+      cacheCount,
     };
   }
 
-  async updateSetting(key: string, value: string) {
-    return this.prisma.settings.upsert({
-      where: { key },
-      update: { value },
-      create: { key, value },
+  async getUsers() {
+    return this.prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
     });
   }
 
-  async getDashboardStats() {
-    const userStats = await this.getUserStats();
-    const cacheCount = await this.prisma.jadvalCache.count();
-    const recentLogs = await this.loggerService.getRecentLogs(10);
+  async broadcast(message: string) {
+    const users = await this.prisma.user.findMany();
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const user of users) {
+      try {
+        await this.botService.sendMessage(user.telegramId.toString(), message);
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
 
     return {
-      users: userStats,
-      cacheCount,
-      recentLogs,
+      success: true,
+      totalUsers: users.length,
+      successCount,
+      failCount,
     };
+  }
+
+  async clearCache() {
+    const count = await this.cacheService.clearAllCache();
+    return { success: true, deletedCount: count };
+  }
+
+  async getAdmins() {
+    return this.prisma.admin.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async addAdmin(telegramId: string, username: string) {
+    return this.prisma.admin.create({
+      data: {
+        telegramId,
+        username,
+      },
+    });
+  }
+
+  async removeAdmin(id: string) {
+    return this.prisma.admin.delete({
+      where: { id },
+    });
   }
 }

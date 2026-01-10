@@ -7,7 +7,6 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { BotModule } from "./bot/bot.module";
 import { AdminModule } from "./admin/admin.module";
 import { ScreenshotModule } from "./screenshot/screenshot.module";
-import { HealthModule } from "./health/health.module";
 const logger = new Logger("AppModule");
 
 @Module({
@@ -21,7 +20,6 @@ const logger = new Logger("AppModule");
       serveRoot: "/screenshots",
     }),
     PrismaModule,
-    HealthModule,
     BotModule,
     ScreenshotModule,
     AdminModule,

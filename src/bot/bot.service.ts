@@ -1232,4 +1232,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   getBot(): Bot<BotContext> {
     return this.bot;
   }
+
+  async sendMessage(chatId: string, text: string) {
+    try {
+      await this.bot.api.sendMessage(chatId, text);
+      return true;
+    } catch (error) {
+      console.error(`Failed to send message to ${chatId}:`, error.message);
+      return false;
+    }
+  }
 }

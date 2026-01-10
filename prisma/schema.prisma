@@ -75,3 +75,12 @@ model Settings {
 
   @@map("settings")
 }
+
+model Admin {
+  id          String   @id @default(uuid())
+  telegramId  String   @unique @map("telegram_id")
+  username    String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("admins")
+}
