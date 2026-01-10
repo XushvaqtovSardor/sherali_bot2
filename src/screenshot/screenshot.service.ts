@@ -4,7 +4,8 @@ import { Queue } from "bullmq";
 import { CacheService } from "./cache.service";
 import { ConfigService } from "@nestjs/config";
 import { BrowserService } from "./browser.service";
-import { FirebaseService } from "../firebase/firebase.service";
+// Firebase/Supabase DISABLED
+// import { FirebaseService } from "../firebase/firebase.service";
 import { join } from "path";
 import { existsSync } from "fs";
 import { mkdir, unlink } from "fs/promises";
@@ -22,8 +23,7 @@ export class ScreenshotService {
     @InjectQueue("screenshot") private screenshotQueue: Queue,
     private cacheService: CacheService,
     private configService: ConfigService,
-    private browserService: BrowserService,
-    private firebaseService: FirebaseService
+    private browserService: BrowserService
   ) {}
 
   async getOrCreateScreenshot(
@@ -222,27 +222,20 @@ export class ScreenshotService {
         timeout: 45000,
       });
 
-      this.logger.log(`☁️ Uploading to Supabase...`);
+      this.logger.log(`💾 Screenshot saved locally: ${filename}`);
 
-      const firebaseUrl = await this.firebaseService.uploadScreenshot(
-        filepath,
-        filename
-      );
+      // Generate local URL path (served via ServeStaticModule)
+      const localUrl = `/screenshots/${filename}`;
 
       // Save to cache for next time
       try {
-        await this.cacheService.saveScreenshotByKey(cacheKey, firebaseUrl);
+        await this.cacheService.saveScreenshotByKey(cacheKey, localUrl);
         this.logger.log(`✅ Saved to cache: ${cacheKey}`);
       } catch (cacheError) {
         this.logger.warn(`⚠️ Could not save to cache: ${cacheError.message}`);
       }
 
-      // Cleanup local file
-      try {
-        await unlink(filepath);
-      } catch (unlinkError) {
-        this.logger.warn(`⚠️ Could not delete local file: ${filepath}`);
-      }
+      // Keep local file (no cleanup - served via ServeStaticModule)
 
       // Cleanup page
       try {
@@ -251,9 +244,9 @@ export class ScreenshotService {
         this.logger.warn(`⚠️ Could not close page: ${closeError.message}`);
       }
 
-      this.logger.log(`✅ Direct screenshot SUCCESS: ${firebaseUrl}`);
+      this.logger.log(`✅ Direct screenshot SUCCESS: ${localUrl}`);
 
-      return firebaseUrl;
+      return localUrl;
     } catch (error) {
       this.logger.error(`💥 Direct screenshot FAILED: ${error.message}`);
       this.logger.error(`Error stack: ${error.stack}`);
