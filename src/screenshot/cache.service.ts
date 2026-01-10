@@ -1,9 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { RedisService } from "../redis/redis.service";
 import { ConfigService } from "@nestjs/config";
-// Firebase/Supabase DISABLED
-// import { FirebaseService } from "../firebase/firebase.service";
 import { unlink } from "fs/promises";
 
 @Injectable()
@@ -13,7 +10,6 @@ export class CacheService {
 
   constructor(
     private prisma: PrismaService,
-    private redis: RedisService,
     private configService: ConfigService
   ) {
     this.cacheDuration = parseInt(
@@ -26,18 +22,6 @@ export class CacheService {
     kurs: string,
     guruh: string
   ): Promise<string | null> {
-    const redisKey = `screenshot:${fakultet}:${kurs}:${guruh}`;
-
-    try {
-      const cached = await this.redis.get(redisKey);
-      if (cached) {
-        this.logger.log(`Redis cache hit: ${redisKey}`);
-        return cached;
-      }
-    } catch (error) {
-      this.logger.warn(`Redis unavailable, using PostgreSQL only`);
-    }
-
     try {
       const dbCache = await this.prisma.jadvalCache.findUnique({
         where: {
@@ -46,18 +30,7 @@ export class CacheService {
       });
 
       if (dbCache && dbCache.expiresAt > new Date()) {
-        this.logger.log(`PostgreSQL cache hit: ${redisKey}`);
-
-        try {
-          await this.redis.set(
-            redisKey,
-            dbCache.screenshotPath,
-            Math.floor((dbCache.expiresAt.getTime() - Date.now()) / 1000)
-          );
-        } catch (error) {
-          this.logger.warn(`Could not restore to Redis cache`);
-        }
-
+        this.logger.log(`Cache hit: ${fakultet}_${kurs}_${guruh}`);
         return dbCache.screenshotPath;
       }
     } catch (error) {
@@ -68,18 +41,6 @@ export class CacheService {
   }
 
   async getScreenshotByKey(cacheKey: string): Promise<string | null> {
-    const redisKey = `screenshot:${cacheKey}`;
-
-    try {
-      const cached = await this.redis.get(redisKey);
-      if (cached) {
-        this.logger.log(`Redis cache hit: ${redisKey}`);
-        return cached;
-      }
-    } catch (error) {
-      this.logger.warn(`Redis unavailable, using PostgreSQL only`);
-    }
-
     try {
       const dbCache = await this.prisma.jadvalCache.findFirst({
         where: {
@@ -88,18 +49,7 @@ export class CacheService {
       });
 
       if (dbCache && dbCache.expiresAt > new Date()) {
-        this.logger.log(`PostgreSQL cache hit: ${redisKey}`);
-
-        try {
-          await this.redis.set(
-            redisKey,
-            dbCache.screenshotPath,
-            Math.floor((dbCache.expiresAt.getTime() - Date.now()) / 1000)
-          );
-        } catch (error) {
-          this.logger.warn(`Could not restore to Redis cache`);
-        }
-
+        this.logger.log(`Cache hit: ${cacheKey}`);
         return dbCache.screenshotPath;
       }
     } catch (error) {
@@ -116,7 +66,6 @@ export class CacheService {
     screenshotPath: string
   ): Promise<void> {
     const expiresAt = new Date(Date.now() + this.cacheDuration);
-    const redisKey = `screenshot:${fakultet}:${kurs}:${guruh}`;
 
     try {
       await this.prisma.jadvalCache.upsert({
@@ -135,23 +84,10 @@ export class CacheService {
           expiresAt,
         },
       });
-      this.logger.log(`Saved to PostgreSQL: ${redisKey}`);
+      this.logger.log(`Saved to database: ${fakultet}_${kurs}_${guruh}`);
     } catch (error) {
       this.logger.error(`Database error in saveScreenshot:`, error.message);
       throw error;
-    }
-
-    try {
-      await this.redis.set(
-        redisKey,
-        screenshotPath,
-        Math.floor(this.cacheDuration / 1000)
-      );
-      this.logger.log(`Saved to Redis: ${redisKey}`);
-    } catch (error) {
-      this.logger.warn(
-        `Could not save to Redis, continuing with PostgreSQL only`
-      );
     }
   }
 
@@ -160,7 +96,6 @@ export class CacheService {
     screenshotPath: string
   ): Promise<void> {
     const expiresAt = new Date(Date.now() + this.cacheDuration);
-    const redisKey = `screenshot:${cacheKey}`;
 
     try {
       await this.prisma.jadvalCache.upsert({
@@ -183,26 +118,13 @@ export class CacheService {
           expiresAt,
         },
       });
-      this.logger.log(`Saved to PostgreSQL: ${redisKey}`);
+      this.logger.log(`Saved to database: ${cacheKey}`);
     } catch (error) {
       this.logger.error(
         `Database error in saveScreenshotByKey:`,
         error.message
       );
       throw error;
-    }
-
-    try {
-      await this.redis.set(
-        redisKey,
-        screenshotPath,
-        Math.floor(this.cacheDuration / 1000)
-      );
-      this.logger.log(`Saved to Redis: ${redisKey}`);
-    } catch (error) {
-      this.logger.warn(
-        `Could not save to Redis, continuing with PostgreSQL only`
-      );
     }
   }
 
@@ -211,8 +133,6 @@ export class CacheService {
     kurs: string,
     guruh: string
   ): Promise<void> {
-    const redisKey = `screenshot:${fakultet}:${kurs}:${guruh}`;
-
     try {
       const cached = await this.prisma.jadvalCache.findUnique({
         where: {
@@ -221,7 +141,7 @@ export class CacheService {
       });
 
       if (cached) {
-        // Delete local file only (no Supabase)
+        // Delete local file only
         if (
           cached.screenshotPath &&
           !cached.screenshotPath.startsWith("http")
@@ -243,17 +163,9 @@ export class CacheService {
     } catch (error) {
       this.logger.error(`Error deleting from database:`, error.message);
     }
-
-    try {
-      await this.redis.del(redisKey);
-    } catch (error) {
-      this.logger.warn(`Could not delete from Redis`);
-    }
   }
 
   async deleteScreenshotByKey(cacheKey: string): Promise<void> {
-    const redisKey = `screenshot:${cacheKey}`;
-
     try {
       const cached = await this.prisma.jadvalCache.findFirst({
         where: {
@@ -262,7 +174,7 @@ export class CacheService {
       });
 
       if (cached) {
-        // Delete local file only (no Supabase)
+        // Delete local file only
         if (
           cached.screenshotPath &&
           !cached.screenshotPath.startsWith("http")
@@ -283,12 +195,6 @@ export class CacheService {
       }
     } catch (error) {
       this.logger.error(`Error deleting from database:`, error.message);
-    }
-
-    try {
-      await this.redis.del(redisKey);
-    } catch (error) {
-      this.logger.warn(`Could not delete from Redis`);
     }
   }
 
@@ -314,7 +220,7 @@ export class CacheService {
       });
 
       for (const cache of expired) {
-        // Delete local file only (no Supabase)
+        // Delete local file only
         if (cache.screenshotPath && !cache.screenshotPath.startsWith("http")) {
           try {
             await unlink(cache.screenshotPath);
@@ -337,7 +243,7 @@ export class CacheService {
 
   async clearAllCache(): Promise<number> {
     try {
-      // Delete local files (no Supabase)
+      // Delete local files
       const allCached = await this.prisma.jadvalCache.findMany();
       let deletedCount = 0;
 
@@ -355,15 +261,6 @@ export class CacheService {
       await this.prisma.jadvalCache.deleteMany({});
       await this.prisma.log.deleteMany({});
       await this.prisma.choice.deleteMany({});
-
-      try {
-        const keys = await this.redis.keys("screenshot:*");
-        if (keys.length > 0) {
-          await this.redis.del(...keys);
-        }
-      } catch (error) {
-        this.logger.warn("Could not clear Redis cache");
-      }
 
       this.logger.log(`Cleared all cache: ${deletedCount} files deleted`);
       return deletedCount;

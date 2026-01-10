@@ -9,24 +9,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: timetable_bot
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: timetable_redis
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,12 +26,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/timetable_bot?schema=public
-      REDIS_URL: redis://redis:6379
       BOT_TOKEN: ${BOT_TOKEN}
       ADMIN_ID: ${ADMIN_ID}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -76,4 +60,3 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:

@@ -1,16 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { RedisService } from "../redis/redis.service";
 
 @Injectable()
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
   private startTime = Date.now();
 
-  constructor(
-    private prismaService: PrismaService,
-    private redisService: RedisService
-  ) {}
+  constructor(private prismaService: PrismaService) {}
 
   async check() {
     const status = {
@@ -46,30 +42,6 @@ export class HealthService {
       };
       status.status = "degraded";
       this.logger.error(`❌ Database: ${error.message}`);
-    }
-
-    // Check Redis
-    try {
-      const testKey = "health_check";
-      await this.redisService.set(testKey, "ok", 10);
-      const value = await this.redisService.get(testKey);
-
-      if (value === "ok") {
-        status.services.redis = {
-          status: "connected",
-          type: "Redis",
-        };
-        this.logger.log("✅ Redis: Connected");
-      } else {
-        throw new Error("Redis test failed");
-      }
-    } catch (error) {
-      status.services.redis = {
-        status: "disconnected",
-        error: error.message,
-      };
-      status.status = "degraded";
-      this.logger.error(`❌ Redis: ${error.message}`);
     }
 
     // Environment info
