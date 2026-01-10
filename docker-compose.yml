@@ -22,7 +22,7 @@ services:
     image: redis:7-alpine
     container_name: timetable_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5433/timetable_bot?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/timetable_bot?schema=public
       REDIS_URL: redis://redis:6379
       BOT_TOKEN: ${BOT_TOKEN}
       ADMIN_ID: ${ADMIN_ID}
