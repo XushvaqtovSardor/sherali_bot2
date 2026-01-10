@@ -65,12 +65,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       // Wait a bit to ensure Telegram processes the webhook deletion
       await new Promise((resolve) => setTimeout(resolve, 2000));
       this.logger.log("✓ Waited 2 seconds for webhook cleanup");
-    } catch (error) {
-      // 404 error is OK - means webhook doesn't exist
-      if (error.error_code === 404) {
-        this.logger.log("ℹ️ No webhook to delete (404 - this is normal)");
+    } catch (error: any) {
+      // 404 error is OK - means webhook doesn't exist (polling mode)
+      const errorMessage = error?.message || String(error);
+      if (errorMessage.includes("404") || errorMessage.includes("Not Found")) {
+        this.logger.log(
+          "ℹ️ No webhook to delete (404 - this is normal for polling mode)"
+        );
       } else {
-        this.logger.warn("⚠️ Webhook deletion warning:", error.message);
+        this.logger.warn("⚠️ Webhook deletion warning:", errorMessage);
       }
       // Don't throw - webhook issues shouldn't stop bot startup
     }
