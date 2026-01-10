@@ -5,9 +5,10 @@ import { BrowserService } from "./browser.service";
 import { CacheService } from "./cache.service";
 import { ConfigService } from "@nestjs/config";
 import { join } from "path";
-import { mkdir, unlink } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { ScreenshotJobData } from "./screenshot.service";
-import { FirebaseService } from "../firebase/firebase.service";
+// Firebase/Supabase DISABLED
+// import { FirebaseService } from "../firebase/firebase.service";
 
 @Processor("screenshot", { concurrency: 3 })
 export class ScreenshotProcessor extends WorkerHost {
@@ -16,8 +17,7 @@ export class ScreenshotProcessor extends WorkerHost {
   constructor(
     private browserService: BrowserService,
     private cacheService: CacheService,
-    private configService: ConfigService,
-    private firebaseService: FirebaseService
+    private configService: ConfigService // firebaseService removed
   ) {
     super();
   }
@@ -165,26 +165,25 @@ export class ScreenshotProcessor extends WorkerHost {
           timeout: 60000,
         });
 
-        const firebaseUrl = await this.firebaseService.uploadScreenshot(
-          filepath,
-          filename
-        );
+        // NO FIREBASE UPLOAD - Just use local file
+        // Generate local URL path for serving via static module
+        const localUrl = `/screenshots/${filename}`;
 
-        await this.cacheService.saveScreenshotByKey(cacheKey, firebaseUrl);
+        this.logger.log(`✓ Screenshot saved locally: ${filename}`);
 
-        try {
-          await unlink(filepath);
-        } catch (error) {
-          this.logger.warn(`Failed to delete local file: ${filepath}`);
-        }
+        // Save local URL to cache (no expiration - we'll handle cleanup manually)
+        await this.cacheService.saveScreenshotByKey(cacheKey, localUrl);
 
-        this.logger.log(`Screenshot saved to Firebase: ${filename}`);
+        // NOTE: We don't delete the file anymore - keep it for serving
+        // Local files in screenshots/ directory will be served by ServeStaticModule
+
+        this.logger.log(`✓ Screenshot available at: ${localUrl}`);
 
         // Increment counter and cleanup page immediately
         this.browserService.incrementScreenshotCount();
         await this.browserService.closePage(cacheKey);
 
-        return firebaseUrl;
+        return localUrl;
       } catch (error) {
         lastError = error;
         retries--;

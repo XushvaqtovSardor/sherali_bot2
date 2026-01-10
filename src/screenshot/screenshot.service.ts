@@ -32,17 +32,13 @@ export class ScreenshotService {
     forceRefresh: boolean = false
   ): Promise<string> {
     try {
-      if (!forceRefresh) {
-        const cached = await this.cacheService.getScreenshotByKey(cacheKey);
-        if (cached) {
-          this.logger.log(`Screenshot cache hit: ${cacheKey}`);
-          return cached;
-        }
-      } else {
-        await this.cacheService.deleteScreenshotByKey(cacheKey);
-      }
+      // CACHE DISABLED: Always capture new screenshot
+      this.logger.log(`📸 Creating new screenshot: ${cacheKey}`);
 
-      this.logger.log(`Screenshot cache miss: ${cacheKey}, adding to queue`);
+      // Delete old cached version if exists
+      await this.cacheService.deleteScreenshotByKey(cacheKey);
+
+      this.logger.log(`🔄 Adding to queue: ${cacheKey}`);
 
       // Add job to queue
       await this.screenshotQueue.add("capture", {

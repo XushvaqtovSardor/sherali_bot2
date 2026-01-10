@@ -66,9 +66,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       this.logger.log("✓ Waited 2 seconds for webhook cleanup");
     } catch (error) {
-      this.logger.error("❌ Failed to delete webhook:", error.message);
-      this.logger.error("Error details:", error);
-      throw error;
+      // 404 error is OK - means webhook doesn't exist
+      if (error.error_code === 404) {
+        this.logger.log("ℹ️ No webhook to delete (404 - this is normal)");
+      } else {
+        this.logger.warn("⚠️ Webhook deletion warning:", error.message);
+      }
+      // Don't throw - webhook issues shouldn't stop bot startup
     }
 
     // Check if another instance is running by trying to get updates

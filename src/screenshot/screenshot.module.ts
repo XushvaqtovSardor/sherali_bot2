@@ -4,22 +4,23 @@ import { ScreenshotService } from "./screenshot.service";
 import { BrowserService } from "./browser.service";
 import { ScreenshotProcessor } from "./screenshot.processor";
 import { CacheService } from "./cache.service";
-import { FirebaseModule } from "../firebase/firebase.module";
-import { ScreenshotCleanupService } from "./screenshot-cleanup.service";
+// Firebase/Supabase DISABLED - not needed anymore
+// import { FirebaseModule } from "../firebase/firebase.module";
+// import { ScreenshotCleanupService } from "./screenshot-cleanup.service";
 
 @Module({
   imports: [
     BullModule.registerQueue({
       name: "screenshot",
     }),
-    FirebaseModule,
+    // FirebaseModule removed - no cloud storage
   ],
   providers: [
     ScreenshotService,
     BrowserService,
     ScreenshotProcessor,
     CacheService,
-    ScreenshotCleanupService,
+    // ScreenshotCleanupService removed - no cleanup needed
   ],
   exports: [ScreenshotService, CacheService],
 })
