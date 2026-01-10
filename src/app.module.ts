@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, Logger } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ServeStaticModule } from "@nestjs/serve-static";
 import { BullModule } from "@nestjs/bullmq";
@@ -9,6 +9,37 @@ import { BotModule } from "./bot/bot.module";
 import { AdminModule } from "./admin/admin.module";
 import { ScreenshotModule } from "./screenshot/screenshot.module";
 import { RedisModule } from "./redis/redis.module";
+import { HealthModule } from "./health/health.module";
+const logger = new Logger("AppModule");
+
+// Parse Redis URL to extract connection details
+function parseRedisUrl(redisUrl: string) {
+  try {
+    if (!redisUrl) {
+      logger.warn("⚠ REDIS_URL not configured, using defaults");
+      return { host: "localhost", port: 6379, password: undefined };
+    }
+
+    // Format: redis://[:password@]host:port
+    const url = new URL(redisUrl);
+    const host = url.hostname || "localhost";
+    const port = parseInt(url.port) || 6379;
+    const password = url.password || undefined;
+
+    logger.log(
+      `🔴 Redis config parsed: ${host}:${port} (password: ${
+        password ? "yes" : "no"
+      })`
+    );
+    return { host, port, password };
+  } catch (error) {
+    logger.error(`❌ Failed to parse REDIS_URL: ${error.message}`);
+    logger.warn("⚠ Using default Redis config: localhost:6379");
+    return { host: "localhost", port: 6379, password: undefined };
+  }
+}
+
+const redisConfig = parseRedisUrl(process.env.REDIS_URL);
 
 @Module({
   imports: [
@@ -18,23 +49,22 @@ import { RedisModule } from "./redis/redis.module";
     ScheduleModule.forRoot(),
     BullModule.forRoot({
       connection: {
-        host: process.env.REDIS_URL?.includes("@")
-          ? process.env.REDIS_URL.split("@")[1].split(":")[0]
-          : "localhost",
-        port: process.env.REDIS_URL?.includes("@")
-          ? parseInt(process.env.REDIS_URL.split(":").pop() || "6379")
-          : 6379,
-        password: process.env.REDIS_URL?.includes("//default:")
-          ? process.env.REDIS_URL.split("//default:")[1].split("@")[0]
-          : undefined,
+        host: redisConfig.host,
+        port: redisConfig.port,
+        password: redisConfig.password,
         retryStrategy: (times) => {
+          logger.warn(`⚠ BullMQ Redis retry attempt ${times}/3`);
           if (times > 3) {
-            console.log(
-              "BullMQ Redis connection failed, continuing without queue..."
+            logger.error(
+              "❌ BullMQ Redis connection failed, continuing without queue..."
             );
             return null;
           }
           return Math.min(times * 1000, 3000);
+        },
+        reconnectOnError: (err) => {
+          logger.error(`❌ BullMQ Redis error: ${err.message}`);
+          return true;
         },
       },
     }),
@@ -44,9 +74,17 @@ import { RedisModule } from "./redis/redis.module";
     }),
     PrismaModule,
     RedisModule,
+    HealthModule,
     BotModule,
     ScreenshotModule,
     AdminModule,
   ],
 })
-export class AppModule {}
+export class AppModule {
+  constructor() {
+    logger.log("========================================");
+    logger.log("🚀 Application module initialized");
+    logger.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+    logger.log("========================================");
+  }
+}

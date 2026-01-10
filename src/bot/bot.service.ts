@@ -42,32 +42,65 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
+    this.logger.log("========================================");
+    this.logger.log("🤖 Bot service initialization started");
+    this.logger.log("========================================");
+
     const token = this.configService.get<string>("BOT_TOKEN");
+
+    if (!token) {
+      this.logger.error("❌ BOT_TOKEN is not configured!");
+      throw new Error("BOT_TOKEN environment variable is required");
+    }
+
+    this.logger.log(`✓ BOT_TOKEN loaded: ${token.substring(0, 15)}...`);
     this.bot = new Bot<BotContext>(token);
+    this.logger.log("✓ Bot instance created");
 
     // Force delete webhook and wait to ensure no conflicts
     try {
+      this.logger.log("📡 Deleting any existing webhook...");
       await this.bot.api.deleteWebhook({ drop_pending_updates: true });
-      this.logger.log("Webhook deleted successfully");
+      this.logger.log("✓ Webhook deleted successfully");
       // Wait a bit to ensure Telegram processes the webhook deletion
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      this.logger.log("✓ Waited 2 seconds for webhook cleanup");
     } catch (error) {
-      this.logger.error("Failed to delete webhook:", error.message);
+      this.logger.error("❌ Failed to delete webhook:", error.message);
+      this.logger.error("Error details:", error);
       throw error;
     }
 
     // Check if another instance is running by trying to get updates
     try {
+      this.logger.log("🔍 Authenticating bot with Telegram...");
       const me = await this.bot.api.getMe();
-      this.logger.log(`Bot authenticated as: ${me.username} (ID: ${me.id})`);
+      this.logger.log(`✓ Bot authenticated as: @${me.username} (ID: ${me.id})`);
+      this.logger.log(`  - First name: ${me.first_name}`);
+      this.logger.log(`  - Can join groups: ${me.can_join_groups}`);
+      this.logger.log(
+        `  - Can read all group messages: ${me.can_read_all_group_messages}`
+      );
     } catch (error) {
+      this.logger.error("❌ Bot authentication failed!");
+      this.logger.error(`Error code: ${error.error_code}`);
+      this.logger.error(`Error message: ${error.message}`);
+
       if (error.error_code === 409) {
-        this.logger.error(
-          "Another bot instance is already running. Please stop it first."
-        );
-        this.logger.error(
-          "If running in Docker, make sure only one container is running."
-        );
+        this.logger.error("========================================");
+        this.logger.error("⚠ CONFLICT ERROR - 409");
+        this.logger.error("Another bot instance is already running!");
+        this.logger.error("========================================");
+        this.logger.error("Possible causes:");
+        this.logger.error("1. Another Docker container is running");
+        this.logger.error("2. Another process is using this bot token");
+        this.logger.error("3. Webhook was not properly deleted");
+        this.logger.error("========================================");
+        this.logger.error("Solutions:");
+        this.logger.error("1. Run: docker ps -a");
+        this.logger.error("2. Run: docker stop <container_id>");
+        this.logger.error("3. Check if any node processes are running");
+        this.logger.error("========================================");
         throw new Error(
           "Conflict: Another bot instance is running. Stop it before starting a new one."
         );
@@ -75,9 +108,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
 
+    this.logger.log("🔧 Setting up bot handlers...");
     this.setupCommands();
+    this.logger.log("✓ Commands set up");
+
     this.setupCallbacks();
+    this.logger.log("✓ Callbacks set up");
+
     this.setupErrorHandler();
+    this.logger.log("✓ Error handler set up");
 
     // Set default commands for all users
     const defaultCommands = [
@@ -88,15 +127,16 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     ];
 
     try {
+      this.logger.log("📝 Setting bot commands...");
       await this.bot.api.setMyCommands(defaultCommands);
-      this.logger.log("Default commands set successfully");
+      this.logger.log("✓ Default commands set successfully");
     } catch (error) {
-      this.logger.error("Failed to set default commands:", error.message);
+      this.logger.error("❌ Failed to set default commands:", error.message);
     }
 
     // Set admin commands for admin user
     const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-    this.logger.log(`Admin ID from config: ${adminId}`);
+    this.logger.log(`👤 Admin ID from config: ${adminId}`);
 
     if (adminId && !isNaN(adminId)) {
       const adminCommands = [
@@ -108,32 +148,44 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         await this.bot.api.setMyCommands(adminCommands, {
           scope: { type: "chat", chat_id: adminId },
         });
-        this.logger.log(`Admin commands set for user: ${adminId}`);
+        this.logger.log(`✓ Admin commands set for user: ${adminId}`);
       } catch (error) {
         this.logger.error(
-          `Failed to set admin commands for ${adminId}:`,
+          `❌ Failed to set admin commands for ${adminId}:`,
           error.message
         );
       }
     } else {
-      this.logger.warn("Admin ID not configured or invalid");
+      this.logger.warn("⚠ Admin ID not configured or invalid");
     }
 
     try {
+      this.logger.log("========================================");
+      this.logger.log("🚀 Starting bot polling...");
+      this.logger.log("========================================");
+
       this.isRunning = true;
       this.bot.start({
         onStart: (botInfo) => {
-          this.logger.log(`Bot @${botInfo.username} started successfully`);
+          this.logger.log("========================================");
+          this.logger.log(`✅ BOT STARTED SUCCESSFULLY!`);
+          this.logger.log(`✅ Username: @${botInfo.username}`);
+          this.logger.log(`✅ Bot ID: ${botInfo.id}`);
+          this.logger.log("✅ Bot is now listening for messages...");
+          this.logger.log("========================================");
         },
       });
     } catch (error) {
       this.isRunning = false;
+      this.logger.error("========================================");
+      this.logger.error("❌ FAILED TO START BOT!");
+      this.logger.error("========================================");
+
       if (error.error_code === 409) {
-        this.logger.error(
-          "Conflict: Another bot instance is running. Stopping this instance."
-        );
+        this.logger.error("⚠ Conflict: Another bot instance is running");
       } else {
-        this.logger.error("Failed to start bot:", error.message);
+        this.logger.error(`Error: ${error.message}`);
+        this.logger.error(`Stack: ${error.stack}`);
       }
       throw error;
     }
@@ -202,37 +254,58 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private setupCommands() {
     this.bot.command("start", async (ctx) => {
-      const telegramId = ctx.from.id;
-      const firstName = ctx.from.first_name;
-      const lastName = ctx.from.last_name;
-      const username = ctx.from.username;
-
-      let user = await this.userService.findByTelegramId(telegramId);
-      const isNewUser = !user;
-
-      if (!user) {
-        user = await this.userService.createOrUpdateUser({
-          telegramId,
-          firstName,
-          lastName,
-          username,
-        });
-      }
-
       try {
+        const telegramId = ctx.from.id;
+        const firstName = ctx.from.first_name;
+        const lastName = ctx.from.last_name;
+        const username = ctx.from.username;
+
+        this.logger.log("========================================");
+        this.logger.log("👋 /start command received");
+        this.logger.log(`User ID: ${telegramId}`);
+        this.logger.log(`Username: @${username || "N/A"}`);
+        this.logger.log(`Name: ${firstName} ${lastName || ""}`);
+        this.logger.log("========================================");
+
+        let user = await this.userService.findByTelegramId(telegramId);
+        const isNewUser = !user;
+
+        this.logger.log(`Is new user: ${isNewUser}`);
+
+        if (!user) {
+          this.logger.log("🆕 Creating new user...");
+          user = await this.userService.createOrUpdateUser({
+            telegramId,
+            firstName,
+            lastName,
+            username,
+          });
+          this.logger.log(`✓ New user created with ID: ${user.id}`);
+        } else {
+          this.logger.log(`✓ Existing user found: ${user.id}`);
+          this.logger.log(`  - Language: ${user.language}`);
+        }
+
         if (isNewUser) {
+          this.logger.log("🌎 Showing language selection...");
           await ctx.reply(this.translationService.t("selectLanguage", "uz"), {
             reply_markup: this.translationService.getLanguageKeyboard(),
           });
         } else {
           const lang = user.language as Language;
+          this.logger.log(`👋 Showing welcome message in ${lang}...`);
           await ctx.reply(this.translationService.t("welcome", lang), {
             reply_markup: this.keyboardService.getCategoryKeyboard(lang),
           });
         }
 
         await this.loggerService.log(user.id, "start_command");
+        this.logger.log("✓ /start command completed successfully");
+        this.logger.log("========================================");
       } catch (error) {
+        this.logger.error("❌ Error in /start command");
+        this.logger.error(`Error: ${error.message}`);
+        this.logger.error(`Stack: ${error.stack}`);
         this.handleBotError(error, ctx, "start command");
       }
     });

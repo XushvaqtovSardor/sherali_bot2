@@ -2,7 +2,19 @@ node_modules
 dist
 .env
 .env.local
+.env.production
 *.log
+
+# SSH Keys
+*.pem
+id_rsa
+id_rsa.pub
+droplet_*
+
+# Backups
+*.backup
+*.bak
+backup/
 
 admin-panel/src/firebase/serviceAccountKey.json
 

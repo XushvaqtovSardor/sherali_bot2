@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: timetable_bot
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/timetable_bot?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5433/timetable_bot?schema=public
       REDIS_URL: redis://redis:6379
       BOT_TOKEN: ${BOT_TOKEN}
       ADMIN_ID: ${ADMIN_ID}
@@ -52,12 +52,26 @@ services:
       SCREENSHOT_CACHE_DURATION: ${SCREENSHOT_CACHE_DURATION:-600000}
       SCREENSHOT_QUALITY: ${SCREENSHOT_QUALITY:-85}
       PUPPETEER_CONCURRENCY: ${PUPPETEER_CONCURRENCY:-7}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
       PORT: 3000
+      DOMAIN: ${DOMAIN:-http://localhost}
     ports:
       - "3000:3000"
     volumes:
       - ./screenshots:/app/screenshots
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: sh -c "npx prisma migrate deploy && node dist/main.js"
 
 volumes:
