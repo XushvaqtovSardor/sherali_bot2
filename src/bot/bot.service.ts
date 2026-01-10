@@ -41,6 +41,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private screenshotService: ScreenshotService
   ) {}
 
+  private sanitizeCacheKey(key: string): string {
+    // Replace / and \ with - to avoid path issues
+    return key.replace(/[\/\\]/g, "-");
+  }
+
   async onModuleInit() {
     this.logger.log("========================================");
     this.logger.log("🤖 Bot service initialization started");
@@ -700,11 +705,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             guruh
           );
 
+          const cacheKey = this.sanitizeCacheKey(
+            `${category}_${kurs}_${guruh}`
+          );
           const screenshotPath =
-            await this.screenshotService.getOrCreateScreenshot(
-              url,
-              `${category}_${kurs}_${guruh}`
-            );
+            await this.screenshotService.getOrCreateScreenshot(url, cacheKey);
 
           this.logger.log(`Screenshot URL: ${screenshotPath}`);
 
@@ -794,11 +799,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
           await this.userService.createChoice(user.id, category, group, item);
 
+          const cacheKey = this.sanitizeCacheKey(
+            `${category}_${group}_${item.replace(/\s+/g, "_")}`
+          );
           const screenshotPath =
-            await this.screenshotService.getOrCreateScreenshot(
-              url,
-              `${category}_${group}_${item.replace(/\s+/g, "_")}`
-            );
+            await this.screenshotService.getOrCreateScreenshot(url, cacheKey);
 
           await ctx.deleteMessage();
           const caption = category === "teachers" ? `👨‍🏫 ${item}` : `🚪 ${item}`;
@@ -882,10 +887,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             return;
           }
 
+          const cacheKey = this.sanitizeCacheKey(
+            `${category}_${kurs}_${guruh}`
+          );
           const screenshotPath =
             await this.screenshotService.getOrCreateScreenshot(
               url,
-              `${category}_${kurs}_${guruh}`,
+              cacheKey,
               true
             );
 
