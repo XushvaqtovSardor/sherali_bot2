@@ -20,10 +20,11 @@ async function bootstrap() {
     origin: ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
   });
-
+  const doman=process.env.Doman
   const port = process.env.PORT || 4010;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
+  console.log(`${doman}`)
 }
 
 bootstrap();
