@@ -57,7 +57,7 @@ services:
       PORT: 3000
       DOMAIN: ${DOMAIN:-http://localhost}
     ports:
-      - "3000:3000"
+      - "4010:3000"
     volumes:
       - ./screenshots:/app/screenshots
     restart: unless-stopped
