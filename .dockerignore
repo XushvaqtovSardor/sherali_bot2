@@ -1,0 +1,70 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Testing
+coverage/
+*.test.ts
+*.spec.ts
+
+# Logs
+logs/
+*.log
+
+# Screenshots (old/local files)
+screenshots/*.jpg
+screenshots/*.jpeg
+screenshots/*.png
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation
+*.md
+!README.md
+
+# Admin panel (if not needed in Docker)
+admin-panel/node_modules/
+admin-panel/dist/
+
+# Scripts (not needed in container)
+*.sh
+check-bot.sh
+deploy-to-droplet.sh
+restart-bot.sh
+
+# Prisma (migrations must be included for deployment)
+# prisma/migrations/
+
+# Other
+.npmrc
+.yarnrc

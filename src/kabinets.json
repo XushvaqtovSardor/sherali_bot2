@@ -1,0 +1,20 @@
+{
+  "Kabinets": {
+    "1-qavat": {
+      "101-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2001",
+      "102-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2002",
+      "103-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2003"
+    },
+    "2-qavat": {
+      "201-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2004",
+      "202-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2005",
+      "203-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2006"
+    },
+    "3-qavat": {
+      "301-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2007",
+      "302-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2008",
+      "303-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2009",
+      "304-xona": "https://tsue.edupage.org/timetable/view.php?num=91&room=*2010"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "categories": {
+    "bakalavr": "Bakalavr",
+    "kechki": "Kechki_talim",
+    "masofaviy": "Masofaviy_talim",
+    "magistr": "Magistratura"
+  },
+  "Bakalavr": {
+    "menejment fakulteti": {
+      "display": {
+        "uz": "Menejment fakulteti",
+        "ru": "Факультет менеджмента",
+        "en": "Faculty of Management"
+      }
+    },
+    "IQTISODIYOT FAKULTETI": {
+      "display": {
+        "uz": "Iqtisodiyot fakulteti",
+        "ru": "Факультет экономики",
+        "en": "Faculty of Economics"
+      }
+    },
+    "Raqamli Iqtisodiyot Fakulteti": {
+      "display": {
+        "uz": "Raqamli iqtisodiyot fakulteti",
+        "ru": "Факультет цифровой экономики",
+        "en": "Faculty of Digital Economics"
+      }
+    },
+    "Turizm Fakulteti": {
+      "display": {
+        "uz": "Turizm fakulteti",
+        "ru": "Факультет туризма",
+        "en": "Faculty of Tourism"
+      }
+    },
+    "SOLIQ VA BUDJET HISOBI": {
+      "display": {
+        "uz": "Soliq va budjet hisobi fakulteti",
+        "ru": "Факультет налогов и бюджетного учета",
+        "en": "Faculty of Tax and Budget Accounting"
+      }
+    },
+    "BUXGALTERIYA HISOBI": {
+      "display": {
+        "uz": "Buxgalteriya hisobi fakulteti",
+        "ru": "Факультет бухгалтерского учета",
+        "en": "Faculty of Accounting"
+      }
+    },
+    "MOLIYA FAKULTETI": {
+      "display": {
+        "uz": "Moliya fakulteti",
+        "ru": "Финансовый факультет",
+        "en": "Faculty of Finance"
+      }
+    },
+    "BANK ISHI FAKULTETI": {
+      "display": {
+        "uz": "Bank ishi fakulteti",
+        "ru": "Факультет банковского дела",
+        "en": "Faculty of Banking"
+      }
+    },
+    "POLOTSKIY": {
+      "display": {
+        "uz": "Polotskiy",
+        "ru": "Полоцкий",
+        "en": "Polotskiy"
+      }
+    }
+  }
+}

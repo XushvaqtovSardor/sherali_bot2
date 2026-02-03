@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: sherali_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: sherali_datadb
+    ports:
+      - "5432:5432"
+    volumes:
+      - baza_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: sherali_bot
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "3010:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "
+        pnpm run build
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        pnpm run start:prod
+      "
+
+volumes:
+  baza_data:

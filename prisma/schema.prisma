@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt   @unique
+  firstName  String
+  lastName   String?
+  username   String?
+  language   String   @default("uz")
+  category   String?
+  fakultet   String?
+  kurs       String?
+  guruh      String?
+  url        String?
+  lastChoice Json?    @map("last_choice")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  lastActive DateTime @default(now()) @map("last_active")
+
+  choices Choice[]
+  logs    Log[]
+
+  @@index([telegramId])
+  @@index([lastActive])
+  @@map("users")
+}
+
+model Choice {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  fakultet  String
+  kurs      String
+  guruh     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("choices")
+}
+
+model ChannelCache {
+  id        Int      @id @default(autoincrement())
+  cacheKey  String   @unique @map("cache_key")
+  messageId Int      @map("message_id")
+  fileId    String   @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("channel_cache")
+}
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  metadata  Json?
+  timestamp DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([timestamp])
+  @@map("logs")
+}
+
+model Admin {
+  id         String   @id @default(uuid())
+  telegramId String   @unique @map("telegram_id")
+  username   String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("admins")
+}

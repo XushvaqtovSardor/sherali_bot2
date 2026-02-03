@@ -1,0 +1,4 @@
+Host mydroplet
+    HostName 167.99.82.101
+    User root
+    IdentityFile ~/.ssh/droplet_2

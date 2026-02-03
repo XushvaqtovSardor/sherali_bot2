@@ -1,0 +1,49 @@
+node_modules
+dist
+.env
+.env.local
+.env.production
+*.log
+logs
+# SSH Keys
+*.pem
+id_rsa
+id_rsa.pub
+droplet_*
+
+# Backups
+*.backup
+*.bak
+backup/
+
+admin-panel/src/firebase/serviceAccountKey.json
+
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+.DS_Store
+*.pid
+*.seed
+*.pid.lock
+
+coverage
+*.lcov
+.nyc_output
+
+screenshots
+uploads
+temp
+
+admin-panel/dist
+admin-panel/build
+admin-panel/.env.local
+admin-panel/node_modules
+
+# Allow migrations to be tracked
+# prisma/migrations
+# !prisma/migrations/.gitkeep
+
+/generated/prisma
