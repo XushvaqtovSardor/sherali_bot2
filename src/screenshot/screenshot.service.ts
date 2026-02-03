@@ -107,7 +107,7 @@ export class ScreenshotService {
     const filepath = join(screenshotsDir, filename);
 
     let page: any = null;
-    let retries = 2;
+    let retries = 3;
     let lastError: Error = null;
 
     while (retries >= 0) {
@@ -118,7 +118,7 @@ export class ScreenshotService {
         // this.logger.log(`🌐 Navigating to ${url}`);
         await page.goto(url, {
           waitUntil: "domcontentloaded",
-          timeout: 120000,
+          timeout: 180000,
         });
 
         // this.logger.log(`⏳ Waiting for timetable content...`);
@@ -202,7 +202,7 @@ export class ScreenshotService {
         lastError = error;
         retries--;
         this.logger.error(
-          `⚠️ Screenshot failed (${2 - retries}/3): ${error.message}`,
+          `⚠️ Screenshot failed (${3 - retries}/4): ${error.message}`,
         );
 
         if (page) {
@@ -218,7 +218,9 @@ export class ScreenshotService {
         }
 
         // Wait longer between retries for slow servers
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const waitTime = (3 - retries) * 8000;
+        this.logger.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
     }
 

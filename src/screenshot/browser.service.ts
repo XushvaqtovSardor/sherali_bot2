@@ -49,7 +49,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           headless: true,
           executablePath: this.getChromePath(),
           args: config.args,
-          protocolTimeout: 60000,
+          protocolTimeout: 180000,
           handleSIGINT: false,
           handleSIGTERM: false,
           handleSIGHUP: false,
@@ -127,8 +127,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     const page = await this.browser.newPage();
 
     // Set longer timeout for slow servers
-    page.setDefaultTimeout(120000);
-    page.setDefaultNavigationTimeout(120000);
+    page.setDefaultTimeout(180000);
+    page.setDefaultNavigationTimeout(180000);
 
     await page.setViewport({ width: 3840, height: 2160 });
 
