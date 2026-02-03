@@ -28,6 +28,17 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--disable-features=IsolateOrigins,site-per-process",
           "--disable-web-security",
           "--window-size=1920x1080",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process",
+          "--disable-background-networking",
+          "--disable-default-apps",
+          "--disable-extensions",
+          "--disable-sync",
+          "--metrics-recording-only",
+          "--mute-audio",
+          "--no-pings",
+          "--dns-prefetch-disable",
         ],
       },
       {
@@ -37,6 +48,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
+          "--single-process",
         ],
       },
     ];
@@ -54,6 +66,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           handleSIGTERM: false,
           handleSIGHUP: false,
           ignoreDefaultArgs: ["--disable-extensions"],
+          ignoreHTTPSErrors: true,
+          dumpio: false,
         });
 
         // Test if browser is working
@@ -65,7 +79,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         if (this.browser) {
           try {
             await this.browser.close();
-          } catch (e) {}
+          } catch (e) { }
           this.browser = null;
         }
       }
@@ -131,6 +145,19 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     page.setDefaultNavigationTimeout(180000);
 
     await page.setViewport({ width: 3840, height: 2160 });
+
+    // Set user agent to avoid blocks
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    );
+
+    // Set extra HTTP headers
+    await page.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    });
 
     // Handle page crash events
     page.on("error", (error) => {

@@ -20,7 +20,7 @@ export class ScreenshotService {
     private configService: ConfigService,
     private browserService: BrowserService,
     private channelCacheService: ChannelCacheService,
-  ) {}
+  ) { }
 
   /**
    * Get screenshot - checks channel cache first, takes new one if expired
@@ -116,10 +116,33 @@ export class ScreenshotService {
         page = await this.browserService.getPage(cacheKey);
 
         // this.logger.log(`🌐 Navigating to ${url}`);
-        await page.goto(url, {
-          waitUntil: "domcontentloaded",
-          timeout: 180000,
-        });
+
+        // Try navigation with multiple strategies
+        let navigationSuccess = false;
+        const navigationStrategies = [
+          { waitUntil: "domcontentloaded", timeout: 180000 },
+          { waitUntil: "networkidle0", timeout: 90000 },
+          { waitUntil: "load", timeout: 120000 },
+        ];
+
+        for (const strategy of navigationStrategies) {
+          try {
+            await page.goto(url, strategy);
+            navigationSuccess = true;
+            break;
+          } catch (navError) {
+            if (strategy === navigationStrategies[navigationStrategies.length - 1]) {
+              throw navError;
+            }
+            // Try next strategy
+            this.logger.warn(`Navigation strategy failed, trying next...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+
+        if (!navigationSuccess) {
+          throw new Error("All navigation strategies failed");
+        }
 
         // this.logger.log(`⏳ Waiting for timetable content...`);
 
@@ -201,8 +224,11 @@ export class ScreenshotService {
       } catch (error) {
         lastError = error;
         retries--;
+
+        // Detailed error logging
+        const errorDetails = this.getErrorDetails(error);
         this.logger.error(
-          `⚠️ Screenshot failed (${3 - retries}/4): ${error.message}`,
+          `⚠️ Screenshot failed (${3 - retries}/4): ${errorDetails}`,
         );
 
         if (page) {
@@ -217,14 +243,36 @@ export class ScreenshotService {
           throw lastError;
         }
 
-        // Wait longer between retries for slow servers
-        const waitTime = (3 - retries) * 8000;
-        this.logger.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+        // Progressive wait time with longer delays for network issues
+        const waitTime = (3 - retries) * 10000;
+        this.logger.log(`⏳ Waiting ${waitTime / 1000}s before retry...`);
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
     }
 
     throw lastError || new Error("Failed to capture screenshot");
+  }
+
+  private getErrorDetails(error: any): string {
+    const message = error.message || String(error);
+
+    if (message.includes("ERR_CONNECTION_TIMED_OUT")) {
+      return "Network connection timeout - server may have slow internet or firewall blocking";
+    }
+    if (message.includes("ERR_NAME_NOT_RESOLVED")) {
+      return "DNS resolution failed - check server DNS settings";
+    }
+    if (message.includes("ERR_CONNECTION_REFUSED")) {
+      return "Connection refused - target server may be down";
+    }
+    if (message.includes("Navigation timeout")) {
+      return "Page load timeout - website too slow or unreachable";
+    }
+    if (message.includes("net::")) {
+      return `Network error: ${message}`;
+    }
+
+    return message;
   }
 
   /**
