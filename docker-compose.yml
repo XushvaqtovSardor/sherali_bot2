@@ -32,7 +32,7 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-        pnpm run build
+        pnpm run build &&
         npx prisma generate &&
         npx prisma migrate deploy &&
         pnpm run start:prod
