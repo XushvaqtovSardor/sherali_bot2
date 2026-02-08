@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: sheralibot
       POSTGRES_DB: sherali_datadb
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - baza_data:/var/lib/postgresql/data
     healthcheck:
