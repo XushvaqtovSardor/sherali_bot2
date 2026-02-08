@@ -66,7 +66,6 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           handleSIGTERM: false,
           handleSIGHUP: false,
           ignoreDefaultArgs: ["--disable-extensions"],
-          ignoreHTTPSErrors: true,
           dumpio: false,
         });
 
@@ -75,7 +74,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         // this.logger.log(`✅ Browser initialized successfully: ${version}`);
         return; // Success!
       } catch (error) {
-        // this.logger.warn(`❌ Config "${config.name}" failed: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // this.logger.warn(`❌ Config "${config.name}" failed: ${errorMessage}`);
         if (this.browser) {
           try {
             await this.browser.close();
@@ -161,7 +161,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
     // Handle page crash events
     page.on("error", (error) => {
-      // this.logger.error(`Page error for ${key}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // this.logger.error(`Page error for ${key}:`, errorMessage);
       this.pages.delete(key);
     });
 
@@ -195,7 +196,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           await page.close();
         }
       } catch (error) {
-        // this.logger.warn(`Error closing page ${key}:`, error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // this.logger.warn(`Error closing page ${key}:`, errorMessage);
       } finally {
         this.pages.delete(key);
       }
@@ -245,7 +247,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
       await this.browser.version();
       return false;
     } catch (error) {
-      // this.logger.warn(`Browser health check failed: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // this.logger.warn(`Browser health check failed: ${errorMessage}`);
       return true;
     }
   }
@@ -272,7 +275,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         try {
           await this.browser.close();
         } catch (e) {
-          // this.logger.warn(`Error closing old browser: ${e.message}`);
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          // this.logger.warn(`Error closing old browser: ${errorMessage}`);
         }
       }
 
@@ -286,7 +290,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
       this.lastRestartTime = Date.now();
       // this.logger.log("Browser restarted successfully");
     } catch (error) {
-      this.logger.error(`Failed to restart browser: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to restart browser: ${errorMessage}`);
     } finally {
       this.isRestarting = false;
     }
