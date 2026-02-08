@@ -1,304 +1,49 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-  OnModuleDestroy,
-} from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import puppeteer, { Browser, Page } from "puppeteer";
 
 @Injectable()
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser;
-  private pages: Map<string, Page> = new Map();
   private readonly logger = new Logger(BrowserService.name);
-  private isRestarting = false;
-  private lastRestartTime = 0;
-  private screenshotCount = 0;
 
   async onModuleInit() {
-    const configs = [
-      {
-        name: "Standard (recommended)",
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--disable-gpu",
-          "--disable-features=IsolateOrigins,site-per-process",
-          "--disable-web-security",
-          "--window-size=1920x1080",
-          "--no-first-run",
-          "--no-zygote",
-          "--single-process",
-          "--disable-background-networking",
-          "--disable-default-apps",
-          "--disable-extensions",
-          "--disable-sync",
-          "--metrics-recording-only",
-          "--mute-audio",
-          "--no-pings",
-          "--dns-prefetch-disable",
-        ],
-      },
-      {
-        name: "Minimal (fallback)",
+    try {
+      this.browser = await puppeteer.launch({
+        headless: true,
+        executablePath: this.getChromePath(),
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
-          "--single-process",
         ],
-      },
-    ];
-
-    for (const config of configs) {
-      try {
-        // this.logger.log(`Trying browser config: ${config.name}`);
-
-        this.browser = await puppeteer.launch({
-          headless: true,
-          executablePath: this.getChromePath(),
-          args: config.args,
-          protocolTimeout: 180000,
-          handleSIGINT: false,
-          handleSIGTERM: false,
-          handleSIGHUP: false,
-          ignoreDefaultArgs: ["--disable-extensions"],
-          dumpio: false,
-        });
-
-        // Test if browser is working
-        const version = await this.browser.version();
-        // this.logger.log(`✅ Browser initialized successfully: ${version}`);
-        return; // Success!
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        // this.logger.warn(`❌ Config "${config.name}" failed: ${errorMessage}`);
-        if (this.browser) {
-          try {
-            await this.browser.close();
-          } catch (e) { }
-          this.browser = null;
-        }
-      }
+        timeout: 60000,
+      });
+    } catch (error) {
+      this.logger.error("Browser init failed");
+      throw error;
     }
-
-    // All configs failed
-    this.logger.error(
-      "💥 CRITICAL: All browser configurations failed! Screenshots will not work.",
-    );
-    this.logger.error(
-      "Please ensure Chrome/Chromium is installed on the server:",
-    );
-    this.logger.error("  Ubuntu/Debian: apt-get install chromium-browser");
-    this.logger.error("  Alpine: apk add chromium");
   }
 
   async onModuleDestroy() {
-    if (!this.browser) return;
-
-    try {
-      for (const page of this.pages.values()) {
-        await page.close();
-      }
-      await this.browser.close();
-      // this.logger.log("Browser closed");
-    } catch (error) {
-      this.logger.error("Error closing browser:", error.message);
+    if (this.browser) {
+      try {
+        await this.browser.close();
+      } catch (error) {}
     }
   }
 
-  async getPage(key: string): Promise<Page> {
-    // Check browser health and restart if needed
-    await this.ensureBrowserHealthy();
-
+  async createPage(): Promise<Page> {
     if (!this.browser) {
-      throw new Error(
-        "Browser not initialized - Chrome/Chromium may not be installed on server",
-      );
+      throw new Error("Browser not initialized");
     }
 
-    // Check if page exists and is still valid
-    const existingPage = this.pages.get(key);
-    if (existingPage) {
-      try {
-        // Test if page is still valid by checking if it's closed
-        if (existingPage.isClosed()) {
-          // this.logger.warn(`Page for ${key} was closed, creating new one`);
-          this.pages.delete(key);
-        } else {
-          return existingPage;
-        }
-      } catch (error) {
-        // this.logger.warn(`Page for ${key} is invalid, creating new one`);
-        this.pages.delete(key);
-      }
-    }
-
-    // Create new page
     const page = await this.browser.newPage();
-
-    // Set longer timeout for slow servers
-    page.setDefaultTimeout(180000);
-    page.setDefaultNavigationTimeout(180000);
-
-    await page.setViewport({ width: 3840, height: 2160 });
-
-    // Set user agent to avoid blocks
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    );
-
-    // Set extra HTTP headers
-    await page.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    });
-
-    // Handle page crash events
-    page.on("error", (error) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      // this.logger.error(`Page error for ${key}:`, errorMessage);
-      this.pages.delete(key);
-    });
-
-    // Handle console errors from the page
-    page.on("pageerror", (error: Error) => {
-      // this.logger.warn(`Page console error for ${key}:`, error.message);
-    });
-
-    // Disable unnecessary features to save memory
-    await page.setRequestInterception(true);
-    page.on("request", (request) => {
-      // Block unnecessary resources to speed up and reduce memory
-      const resourceType = request.resourceType();
-      if (["font", "media", "websocket"].includes(resourceType)) {
-        request.abort();
-      } else {
-        request.continue();
-      }
-    });
-
-    this.pages.set(key, page);
+    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(60000);
+    await page.setViewport({ width: 1920, height: 1080 });
+    
     return page;
-  }
-  async closePage(key: string): Promise<void> {
-    const page = this.pages.get(key);
-    if (page) {
-      try {
-        if (!page.isClosed()) {
-          // Remove all event listeners before closing
-          page.removeAllListeners();
-          await page.close();
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        // this.logger.warn(`Error closing page ${key}:`, errorMessage);
-      } finally {
-        this.pages.delete(key);
-      }
-    }
-  }
-
-  // Add method to periodically clean up old pages
-  async cleanupIdlePages(maxPages: number = 10): Promise<void> {
-    if (this.pages.size <= maxPages) {
-      return;
-    }
-
-    // Close oldest pages when we exceed the limit
-    const pagesToClose = this.pages.size - maxPages;
-    const keys = Array.from(this.pages.keys());
-
-    for (let i = 0; i < pagesToClose; i++) {
-      const key = keys[i];
-      await this.closePage(key);
-      // this.logger.log(`Cleaned up idle page: ${key}`);
-    }
-  }
-
-  async ensureBrowserHealthy(): Promise<void> {
-    // Restart browser every 50 screenshots or if connection seems dead
-    const shouldRestart =
-      this.screenshotCount >= 50 || (await this.isBrowserDead());
-
-    if (shouldRestart && !this.isRestarting) {
-      const timeSinceLastRestart = Date.now() - this.lastRestartTime;
-      // Prevent rapid restarts (min 30 seconds between restarts)
-      if (timeSinceLastRestart > 30000) {
-        // this.logger.warn(
-        //   `Restarting browser (screenshot count: ${this.screenshotCount})`
-        // );
-        await this.restartBrowser();
-      }
-    }
-  }
-
-  async isBrowserDead(): Promise<boolean> {
-    try {
-      if (!this.browser || !this.browser.connected) {
-        return true;
-      }
-      // Try to get browser version as a health check
-      await this.browser.version();
-      return false;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      // this.logger.warn(`Browser health check failed: ${errorMessage}`);
-      return true;
-    }
-  }
-
-  async restartBrowser(): Promise<void> {
-    this.isRestarting = true;
-
-    try {
-      // Close all pages first
-      for (const [key, page] of this.pages.entries()) {
-        try {
-          if (!page.isClosed()) {
-            page.removeAllListeners();
-            await page.close();
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-      this.pages.clear();
-
-      // Close old browser
-      if (this.browser) {
-        try {
-          await this.browser.close();
-        } catch (e) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          // this.logger.warn(`Error closing old browser: ${errorMessage}`);
-        }
-      }
-
-      // Wait a bit before restarting
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Reinitialize browser
-      await this.onModuleInit();
-
-      this.screenshotCount = 0;
-      this.lastRestartTime = Date.now();
-      // this.logger.log("Browser restarted successfully");
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to restart browser: ${errorMessage}`);
-    } finally {
-      this.isRestarting = false;
-    }
-  }
-
-  incrementScreenshotCount(): void {
-    this.screenshotCount++;
   }
 
   getBrowser(): Browser {
@@ -306,11 +51,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getChromePath(): string {
-    // Check environment variable first (from Dockerfile)
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
-      // this.logger.log(`Using Chrome from env: ${envPath}`);
-      return envPath;
+      return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
 
     const platform = process.platform;
@@ -326,44 +68,32 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
-            // this.logger.log(`✅ Using Chrome at: ${path}`);
             return path;
           }
-        } catch (e) {
-          // continue
-        }
+        } catch (e) {}
       }
     } else if (platform === "darwin") {
       return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     } else {
-      // Linux - try multiple common paths
       const possiblePaths = [
-        "/usr/bin/chromium-browser", // Alpine, Debian
-        "/usr/bin/chromium", // Some distros
-        "/usr/bin/google-chrome", // Ubuntu with Chrome
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
-        process.env.CHROME_BIN, // Custom env var
+        process.env.CHROME_BIN,
       ];
 
       for (const path of possiblePaths) {
         if (!path) continue;
-
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
-            // this.logger.log(`✅ Using Chrome at: ${path}`);
             return path;
           }
-        } catch (e) {
-          // continue
-        }
+        } catch (e) {}
       }
     }
 
-    // this.logger.warn("⚠️ Chrome executable not found, using Puppeteer default");
-    // this.logger.warn("If browser fails to start, install Chrome/Chromium:");
-    // this.logger.warn("  Docker/Alpine: apk add chromium");
-    // this.logger.warn("  Ubuntu/Debian: apt-get install chromium-browser");
     return undefined;
   }
 }

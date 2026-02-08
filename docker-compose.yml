@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 12345
+      POSTGRES_PASSWORD: sheralibot
       POSTGRES_DB: sherali_datadb
     ports:
       - "5432:5432"

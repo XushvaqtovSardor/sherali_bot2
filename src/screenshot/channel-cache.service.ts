@@ -2,7 +2,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConfigService } from "@nestjs/config";
 
-// Cache duration: 5 hours in milliseconds
 const CACHE_DURATION_MS = 5 * 60 * 60 * 1000;
 
 export interface CachedScreenshot {
@@ -19,11 +18,8 @@ export class ChannelCacheService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService
-  ) {}
+  ) { }
 
-  /**
-   * Get the cache channel ID from environment variable
-   */
   async getCacheChannelId(): Promise<string | null> {
     try {
       const channelId = this.configService.get<string>("CACHE_CHANNEL_ID");
@@ -34,30 +30,19 @@ export class ChannelCacheService {
     }
   }
 
-  /**
-   * Set the cache channel ID (note: this only logs the value, actual setting should be done via env variable)
-   */
   async setCacheChannelId(channelId: string): Promise<void> {
     this.logger.warn(
-      `Setting cache channel ID dynamically is not supported. Please set CACHE_CHANNEL_ID in .env file to: ${channelId}`
+      `Set CACHE_CHANNEL_ID in .env file to: ${channelId}`
     );
   }
 
-  /**
-   * Get cached screenshot info by cache key
-   * Returns null if not found or expired
-   */
-  async getCachedScreenshot(
-    cacheKey: string
-  ): Promise<CachedScreenshot | null> {
+  async getCachedScreenshot(cacheKey: string): Promise<CachedScreenshot | null> {
     try {
       const cached = await this.prisma.channelCache.findUnique({
         where: { cacheKey },
       });
 
-      if (!cached) {
-        return null;
-      }
+      if (!cached) return null;
 
       const now = new Date();
       const age = now.getTime() - cached.createdAt.getTime();
@@ -75,9 +60,6 @@ export class ChannelCacheService {
     }
   }
 
-  /**
-   * Save screenshot cache info
-   */
   async saveScreenshotCache(
     cacheKey: string,
     messageId: number,
@@ -97,16 +79,12 @@ export class ChannelCacheService {
           fileId,
         },
       });
-      // this.logger.log(`Saved cache for: ${cacheKey}, messageId: ${messageId}`);
     } catch (error) {
       this.logger.error(`Error saving screenshot cache: ${error.message}`);
       throw error;
     }
   }
 
-  /**
-   * Delete cached screenshot by key
-   */
   async deleteCacheByKey(cacheKey: string): Promise<void> {
     try {
       await this.prisma.channelCache.deleteMany({
@@ -117,13 +95,9 @@ export class ChannelCacheService {
     }
   }
 
-  /**
-   * Clear all cache
-   */
   async clearAllCache(): Promise<number> {
     try {
       const result = await this.prisma.channelCache.deleteMany({});
-      // this.logger.log(`Cleared ${result.count} cached screenshots`);
       return result.count;
     } catch (error) {
       this.logger.error(`Error clearing cache: ${error.message}`);
@@ -131,9 +105,6 @@ export class ChannelCacheService {
     }
   }
 
-  /**
-   * Get all cached items
-   */
   async getAllCached() {
     try {
       return await this.prisma.channelCache.findMany({
@@ -145,9 +116,6 @@ export class ChannelCacheService {
     }
   }
 
-  /**
-   * Clean expired cache entries
-   */
   async cleanExpiredCache(): Promise<number> {
     try {
       const expiryDate = new Date(Date.now() - CACHE_DURATION_MS);
@@ -158,9 +126,6 @@ export class ChannelCacheService {
           },
         },
       });
-      if (result.count > 0) {
-        // this.logger.log(`Cleaned ${result.count} expired cache entries`);
-      }
       return result.count;
     } catch (error) {
       this.logger.error(`Error cleaning expired cache: ${error.message}`);
