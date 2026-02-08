@@ -16,9 +16,19 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
+          "--disable-software-rasterizer",
+          "--disable-extensions",
+          "--disable-web-security",
+          "--disable-features=IsolateOrigins,site-per-process",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process",
+          "--disable-accelerated-2d-canvas",
+          "--memory-pressure-off",
         ],
         timeout: 60000,
       });
+      this.logger.log("✅ Browser initialized successfully");
     } catch (error) {
       this.logger.error("Browser init failed");
       throw error;
@@ -39,8 +49,23 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     }
 
     const page = await this.browser.newPage();
-    page.setDefaultTimeout(60000);
-    page.setDefaultNavigationTimeout(60000);
+    
+    // Increase timeouts for slow servers
+    page.setDefaultTimeout(120000);
+    page.setDefaultNavigationTimeout(120000);
+    
+    // Block unnecessary resources to speed up loading
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      // Block ads, fonts, and some media to speed up
+      if (['font', 'media'].includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+    
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 2 });
 
     return page;

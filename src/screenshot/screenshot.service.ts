@@ -18,14 +18,32 @@ export class ScreenshotService {
   ) { }
 
   async getScreenshot(url: string, cacheKey: string): Promise<ScreenshotResult> {
-    try {
-      const filePath = await this.captureScreenshot(url, cacheKey);
-      return { filePath };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Screenshot error: ${errorMessage}`);
-      throw error;
+    const maxRetries = 3;
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`Screenshot attempt ${attempt}/${maxRetries} for ${url}`);
+        const filePath = await this.captureScreenshot(url, cacheKey);
+        if (attempt > 1) {
+          this.logger.log(`✅ Screenshot succeeded on attempt ${attempt}`);
+        }
+        return { filePath };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger.warn(`Screenshot attempt ${attempt} failed: ${lastError.message}`);
+        
+        if (attempt < maxRetries) {
+          // Wait before retry (exponential backoff)
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          this.logger.log(`Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
+
+    this.logger.error(`Screenshot failed after ${maxRetries} attempts: ${lastError.message}`);
+    throw lastError;
   }
 
   private async captureScreenshot(
@@ -42,13 +60,18 @@ export class ScreenshotService {
     const page = await this.browserService.createPage();
 
     try {
+      // Use domcontentloaded for faster loading on slow servers
+      // This doesn't wait for all network requests to finish
       await page.goto(url, {
-        waitUntil: "networkidle0",
-        timeout: 90000,
+        waitUntil: "domcontentloaded",
+        timeout: 120000,
       });
 
-      await page.waitForSelector("body", { timeout: 10000 });
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Wait for body to be sure page has some content
+      await page.waitForSelector("body", { timeout: 15000 });
+      
+      // Give a bit more time for dynamic content
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // Hide footer/contact section to crop it out
       await page.evaluate(() => {
