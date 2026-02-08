@@ -15,13 +15,14 @@ import { AdminService } from "../admin/admin.service";
 import { SubscriptionService } from "./services/subscription.service";
 
 interface SessionData {
-  step?: "language" | "category" | "fakultet" | "kurs" | "guruh" | "subscription_time";
+  step?: "language" | "category" | "fakultet" | "kurs" | "guruh" | "subscription_time" | "broadcast_message";
   language?: Language;
   category?: string;
   fakultet?: string;
   kurs?: string;
   guruh?: string;
   isSubscriptionFlow?: boolean;
+  broadcastMessage?: string;
   subscriptionData?: {
     category: string;
     fakultet?: string;
@@ -404,39 +405,47 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
 
       if (!isAdmin) {
+        await ctx.reply("❌ Access denied");
         return;
       }
 
-      const message = ctx.message.text.replace("/broadcast", "").trim();
-      if (!message) {
-        await ctx.reply(
-          "❌ Please provide a message.\n\nUsage: /broadcast <your message>",
-        );
-        return;
-      }
-
-      const users = await this.userService.getAllUsers();
-      let successCount = 0;
-      let failCount = 0;
-
-      await ctx.reply(`📤 Sending message to ${users.length} users...`);
-
-      for (const user of users) {
-        try {
-          await this.bot.api.sendMessage(Number(user.telegramId), message);
-          successCount++;
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        } catch (error) {
-          failCount++;
-        }
-      }
+      const session = this.getSession(ctx.from.id);
+      session.step = "broadcast_message";
+      session.broadcastMessage = null;
 
       await ctx.reply(
-        `✅ Broadcast complete!\n\n` +
-        `✓ Sent: ${successCount}\n` +
-        `✗ Failed: ${failCount}\n` +
-        `📊 Total: ${users.length}`,
+        "📢 Broadcast xabar\n\n" +
+        "Foydalanuvchilarga yubormoqchi bo'lgan xabaringizni kiriting:"
       );
+    });
+
+    // Message handler for broadcast
+    this.bot.on("message:text", async (ctx) => {
+      const session = this.getSession(ctx.from.id);
+
+      if (session.step === "broadcast_message") {
+        const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+        if (!isAdmin) {
+          return;
+        }
+
+        const message = ctx.message.text;
+        session.broadcastMessage = message;
+
+        const user = await this.userService.findByTelegramId(ctx.from.id);
+        const lang = (user?.language as Language) || "uz";
+
+        const users = await this.userService.getAllUsers();
+
+        await ctx.reply(
+          `📋 Xabar ko'rinishi:\n\n${message}\n\n` +
+          `👥 Qabul qiluvchilar: ${users.length} foydalanuvchi\n\n` +
+          `Xabarni yuborishni tasdiqlaysizmi?`,
+          {
+            reply_markup: this.keyboardService.getBroadcastConfirmKeyboard(lang),
+          }
+        );
+      }
     });
 
     this.bot.command("status", async (ctx) => {
@@ -1432,6 +1441,75 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await this.safeEditMessageText(ctx, messages[lang], {
         reply_markup: this.keyboardService.getCategoryKeyboard(lang),
       });
+    });
+
+    // Broadcast callbacks
+    this.bot.callbackQuery(/^broadcast:confirm$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
+        await ctx.reply("❌ Access denied");
+        return;
+      }
+
+      const session = this.getSession(ctx.from.id);
+      const message = session.broadcastMessage;
+
+      if (!message) {
+        await ctx.reply("❌ Xabar topilmadi");
+        return;
+      }
+
+      const users = await this.userService.getAllUsers();
+      let successCount = 0;
+      let failCount = 0;
+
+      await ctx.editMessageText(`📤 Xabar yuborilmoqda... 0/${users.length}`);
+
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        try {
+          await this.bot.api.sendMessage(Number(user.telegramId), message);
+          successCount++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          // Update progress every 10 users
+          if ((i + 1) % 10 === 0 || i === users.length - 1) {
+            try {
+              await ctx.editMessageText(
+                `📤 Xabar yuborilmoqda... ${i + 1}/${users.length}`
+              );
+            } catch (error) {
+              // Ignore edit errors
+            }
+          }
+        } catch (error) {
+          failCount++;
+        }
+      }
+
+      await ctx.editMessageText(
+        `✅ Broadcast yakunlandi!\n\n` +
+        `✓ Yuborildi: ${successCount}\n` +
+        `✗ Xatolik: ${failCount}\n` +
+        `📊 Jami: ${users.length}`
+      );
+
+      this.sessions.delete(ctx.from.id);
+    });
+
+    this.bot.callbackQuery(/^broadcast:cancel$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
+        await ctx.reply("❌ Access denied");
+        return;
+      }
+
+      this.sessions.delete(ctx.from.id);
+      await ctx.editMessageText("❌ Broadcast bekor qilindi");
     });
   }
 

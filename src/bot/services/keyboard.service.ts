@@ -541,5 +541,20 @@ export class KeyboardService {
 
     return keyboard;
   }
+
+  getBroadcastConfirmKeyboard(lang: string = "uz"): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    keyboard.text(
+      lang === "ru" ? "✅ Yuborish" : lang === "en" ? "✅ Send" : "✅ Yuborish",
+      "broadcast:confirm"
+    );
+    keyboard.text(
+      lang === "ru" ? "❌ Bekor qilish" : lang === "en" ? "❌ Cancel" : "❌ Bekor qilish",
+      "broadcast:cancel"
+    );
+
+    return keyboard;
+  }
 }
 
