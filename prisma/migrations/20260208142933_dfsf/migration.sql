@@ -33,17 +33,6 @@ CREATE TABLE "choices" (
 );
 
 -- CreateTable
-CREATE TABLE "channel_cache" (
-    "id" SERIAL NOT NULL,
-    "cache_key" TEXT NOT NULL,
-    "message_id" INTEGER NOT NULL,
-    "file_id" TEXT NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "channel_cache_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "logs" (
     "id" SERIAL NOT NULL,
     "user_id" INTEGER,
@@ -52,16 +41,6 @@ CREATE TABLE "logs" (
     "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "logs_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "settings" (
-    "id" SERIAL NOT NULL,
-    "key" TEXT NOT NULL,
-    "value" TEXT NOT NULL,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "settings_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -87,19 +66,10 @@ CREATE INDEX "users_last_active_idx" ON "users"("last_active");
 CREATE INDEX "choices_user_id_idx" ON "choices"("user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "channel_cache_cache_key_key" ON "channel_cache"("cache_key");
-
--- CreateIndex
-CREATE INDEX "channel_cache_created_at_idx" ON "channel_cache"("created_at");
-
--- CreateIndex
 CREATE INDEX "logs_user_id_idx" ON "logs"("user_id");
 
 -- CreateIndex
 CREATE INDEX "logs_timestamp_idx" ON "logs"("timestamp");
-
--- CreateIndex
-CREATE UNIQUE INDEX "settings_key_key" ON "settings"("key");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "admins_telegram_id_key" ON "admins"("telegram_id");

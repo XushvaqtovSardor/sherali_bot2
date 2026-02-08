@@ -53,7 +53,7 @@ export class KeyboardService {
     );
   }
 
-  getCategoryKeyboard(lang: string = "uz"): InlineKeyboard {
+  getCategoryKeyboard(lang: string = "uz", isForSubscription: boolean = false): InlineKeyboard {
     const keyboard = new InlineKeyboard();
     const categories = {
       uz: [
@@ -87,6 +87,19 @@ export class KeyboardService {
       keyboard.text(cat.text, cat.data);
       keyboard.row();
     });
+
+    // Obuna yoki bekor qilish tugmasi
+    if (isForSubscription) {
+      keyboard.text(
+        lang === "ru" ? "❌ Отмена" : lang === "en" ? "❌ Cancel" : "❌ Bekor qilish",
+        "sub:cancel"
+      );
+    } else {
+      keyboard.text(
+        lang === "ru" ? "🔔 Подписка" : lang === "en" ? "🔔 Subscription" : "🔔 Obuna",
+        "menu:subscription"
+      );
+    }
 
     return keyboard;
   }
@@ -479,4 +492,54 @@ export class KeyboardService {
 
     return keyboard;
   }
+
+  getSubscriptionMenuKeyboard(lang: string = "uz", hasActive: boolean = false): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    if (hasActive) {
+      keyboard.text(
+        lang === "ru" ? "❌ Отключить подписку" : lang === "en" ? "❌ Unsubscribe" : "❌ Obunani o'chirish",
+        "sub:disable"
+      );
+      keyboard.row();
+    }
+
+    keyboard.text(
+      lang === "ru" ? "✅ Создать подписку" : lang === "en" ? "✅ Create subscription" : "✅ Obunani yoqish",
+      "sub:create"
+    );
+
+    keyboard.row();
+    keyboard.text(
+      lang === "ru" ? "◀️ Назад" : lang === "en" ? "◀️ Back" : "◀️ Orqaga",
+      "back:main"
+    );
+
+    return keyboard;
+  }
+
+  getSubscriptionTimeKeyboard(lang: string = "uz"): InlineKeyboard {
+    const keyboard = new InlineKeyboard();
+
+    const times = ["07:00", "07:30", "08:30", "12:00", "13:00"];
+    times.forEach((time) => {
+      keyboard.text(`🕐 ${time}`, `subtime:${time}`);
+      if (time === "08:30" || time === "13:00") keyboard.row();
+    });
+
+    keyboard.row();
+    keyboard.text(
+      lang === "ru" ? "⏰ Другое время" : lang === "en" ? "⏰ Other time" : "⏰ Boshqa vaqt",
+      "subtime:custom"
+    );
+
+    keyboard.row();
+    keyboard.text(
+      lang === "ru" ? "❌ Отмена" : lang === "en" ? "❌ Cancel" : "❌ Bekor qilish",
+      "sub:cancel"
+    );
+
+    return keyboard;
+  }
 }
+

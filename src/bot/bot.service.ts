@@ -12,14 +12,23 @@ import { TranslationService, Language } from "./services/translation.service";
 import { LoggerService } from "../common/services/logger.service";
 import { ScreenshotService } from "../screenshot/screenshot.service";
 import { AdminService } from "../admin/admin.service";
+import { SubscriptionService } from "./services/subscription.service";
 
 interface SessionData {
-  step?: "language" | "category" | "fakultet" | "kurs" | "guruh";
+  step?: "language" | "category" | "fakultet" | "kurs" | "guruh" | "subscription_time";
   language?: Language;
   category?: string;
   fakultet?: string;
   kurs?: string;
   guruh?: string;
+  isSubscriptionFlow?: boolean;
+  subscriptionData?: {
+    category: string;
+    fakultet?: string;
+    kurs: string;
+    guruh: string;
+    url: string;
+  };
 }
 
 type BotContext = Context & {
@@ -41,6 +50,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private loggerService: LoggerService,
     private screenshotService: ScreenshotService,
     private adminService: AdminService,
+    private subscriptionService: SubscriptionService,
   ) { }
 
   private sanitizeCacheKey(key: string): string {
@@ -75,6 +85,26 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     try {
       const me = await this.bot.api.getMe();
       // this.logger.log(`✅ Bot authenticated: @${me.username} (ID: ${me.id})`);
+
+      // Initialize first admin from ADMIN_ID env variable
+      const adminId = this.configService.get<string>("ADMIN_ID");
+      if (adminId) {
+        const admins = await this.adminService.listAdmins();
+        if (admins.length === 0) {
+          try {
+            const adminInfo = await this.bot.api.getChat(Number(adminId));
+            const username =
+              "username" in adminInfo ? adminInfo.username :
+                "first_name" in adminInfo ? adminInfo.first_name :
+                  "Admin";
+
+            await this.adminService.addAdmin(Number(adminId), username);
+            this.logger.log(`✅ Initial admin created: ${username} (${adminId})`);
+          } catch (error) {
+            this.logger.error(`❌ Failed to create initial admin: ${error.message}`);
+          }
+        }
+      }
     } catch (error) {
       this.logger.error("❌ Bot authentication failed!");
       this.logger.error(`Error: ${error.message}`);
@@ -92,6 +122,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.setupCommands();
     this.setupCallbacks();
+    this.setupMessageHandlers();
     this.setupErrorHandler();
 
     const defaultCommands = [
@@ -633,26 +664,49 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
 
+        const url = this.keyboardService.getUrlForGroup(
+          category,
+          fakultetId !== "none" ? fakultetId : null,
+          kursId,
+          guruh,
+        );
+
+        if (!url) {
+          await ctx.editMessageText(
+            this.translationService.t("noSchedule", lang),
+            {
+              reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+            },
+          );
+          return;
+        }
+
+        // Check if this is for subscription creation
+        const session = this.getSession(ctx.from.id);
+        if (session.isSubscriptionFlow) {
+          session.subscriptionData = {
+            category,
+            fakultet: fakultet !== "none" ? fakultet : null,
+            kurs,
+            guruh,
+            url,
+          };
+
+          const messages = {
+            uz: "🕒 Jadval qachon yuborilsin?\n\nVaqtni tanlang:",
+            ru: "🕒 Когда отправлять расписание?\n\nВыберите время:",
+            en: "🕒 When to send schedule?\n\nSelect time:",
+          };
+
+          await this.safeEditMessageText(ctx, messages[lang], {
+            reply_markup: this.keyboardService.getSubscriptionTimeKeyboard(lang),
+          });
+          return;
+        }
+
         await ctx.editMessageText(this.translationService.t("loading", lang));
 
         try {
-          const url = this.keyboardService.getUrlForGroup(
-            category,
-            fakultetId !== "none" ? fakultetId : null,
-            kursId,
-            guruh,
-          );
-
-          if (!url) {
-            await ctx.editMessageText(
-              this.translationService.t("noSchedule", lang),
-              {
-                reply_markup: this.keyboardService.getCategoryKeyboard(lang),
-              },
-            );
-            return;
-          }
-
           await this.userService.updateUserChoice(user.id, {
             category,
             fakultet: fakultet !== "none" ? fakultet : null,
@@ -1226,6 +1280,215 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await this.safeEditMessageText(ctx, message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
+    });
+
+    // Subscription callbacks
+    this.bot.callbackQuery(/^menu:subscription$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      const chatId = ctx.chat?.id.toString();
+      const subscription = await this.subscriptionService.getActiveSubscription(chatId);
+
+      const messages = {
+        uz: {
+          noSub: "📅 Jadval obunasi yo'q\n\nObuna qilish orqali har kuni tanlagan vaqtingizda jadvalingiz avtomatik yuboriladi.",
+          hasSub: "✅ Faol obuna:\n\n🕒 Vaqt: {time}\n📚 {category}\n\nHar kuni {time} da jadval avtomatik yuboriladi.",
+        },
+        ru: {
+          noSub: "📅 Нет подписки на расписание\n\nС подпиской вы будете получать расписание автоматически каждый день в выбранное время.",
+          hasSub: "✅ Активная подписка:\n\n🕒 Время: {time}\n📚 {category}\n\nРасписание отправляется автоматически каждый день в {time}.",
+        },
+        en: {
+          noSub: "📅 No schedule subscription\n\nWith subscription, you'll receive your schedule automatically every day at your chosen time.",
+          hasSub: "✅ Active subscription:\n\n🕒 Time: {time}\n📚 {category}\n\nSchedule is sent automatically every day at {time}.",
+        },
+      };
+
+      let message = subscription
+        ? messages[lang].hasSub
+          .replace("{time}", subscription.time)
+          .replace("{category}", subscription.category)
+        : messages[lang].noSub;
+
+      await this.safeEditMessageText(ctx, message, {
+        reply_markup: this.keyboardService.getSubscriptionMenuKeyboard(lang, !!subscription),
+      });
+    });
+
+    this.bot.callbackQuery(/^sub:create$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      const session = this.getSession(ctx.from.id);
+      session.step = "category";
+      session.subscriptionData = null;
+      session.isSubscriptionFlow = true;
+
+      const messages = {
+        uz: "📅 Obuna yaratish\n\nIltimos, kategoriyani tanlang:",
+        ru: "📅 Создание подписки\n\nПожалуйста, выберите категорию:",
+        en: "📅 Create subscription\n\nPlease select category:",
+      };
+
+      await this.safeEditMessageText(ctx, messages[lang], {
+        reply_markup: this.keyboardService.getCategoryKeyboard(lang, true),
+      });
+    });
+
+    this.bot.callbackQuery(/^sub:disable$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const chatId = ctx.chat?.id.toString();
+
+      await this.subscriptionService.deleteSubscription(chatId);
+
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      const messages = {
+        uz: "✅ Obuna o'chirildi",
+        ru: "✅ Подписка отключена",
+        en: "✅ Subscription disabled",
+      };
+
+      await this.safeEditMessageText(ctx, messages[lang], {
+        reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+      });
+    });
+
+    this.bot.callbackQuery(/^subtime:(.+)$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const time = ctx.match[1];
+
+      if (time === "custom") {
+        const user = await this.userService.findByTelegramId(ctx.from.id);
+        const lang = (user?.language as Language) || "uz";
+
+        const messages = {
+          uz: "🕒 Vaqtni kiriting (HH:mm formatida, masalan: 09:30):",
+          ru: "🕒 Введите время (в формате HH:mm, например: 09:30):",
+          en: "🕒 Enter time (in HH:mm format, example: 09:30):",
+        };
+
+        const session = this.getSession(ctx.from.id);
+        session.step = "subscription_time";
+
+        await this.safeEditMessageText(ctx, messages[lang]);
+        return;
+      }
+
+      const session = this.getSession(ctx.from.id);
+      const subData = session.subscriptionData;
+
+      if (!subData) {
+        await ctx.reply("❌ Error: no subscription data");
+        return;
+      }
+
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+      const chatId = ctx.chat?.id.toString();
+      const chatType = ctx.chat?.type === "private" ? "private" : "group";
+
+      await this.subscriptionService.createSubscription({
+        chatId,
+        chatType,
+        time,
+        category: subData.category,
+        fakultet: subData.fakultet,
+        kurs: subData.kurs,
+        guruh: subData.guruh,
+        url: subData.url,
+      });
+
+      const messages = {
+        uz: `✅ Obuna yaratildi!\n\nHar kuni soat ${time} da jadvalingiz avtomatik yuboriladi.`,
+        ru: `✅ Подписка создана!\n\nВаше расписание будет отправляться автоматически каждый день в ${time}.`,
+        en: `✅ Subscription created!\n\nYour schedule will be sent automatically every day at ${time}.`,
+      };
+
+      this.sessions.delete(ctx.from.id);
+
+      await this.safeEditMessageText(ctx, messages[lang], {
+        reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+      });
+    });
+
+    this.bot.callbackQuery(/^sub:cancel$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      this.sessions.delete(ctx.from.id);
+
+      const messages = {
+        uz: "❌ Obuna yaratish bekor qilindi",
+        ru: "❌ Создание подписки отменено",
+        en: "❌ Subscription creation cancelled",
+      };
+
+      await this.safeEditMessageText(ctx, messages[lang], {
+        reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+      });
+    });
+  }
+
+  private setupMessageHandlers() {
+    // Handler for custom time input during subscription creation
+    this.bot.on("message:text", async (ctx) => {
+      const session = this.getSession(ctx.from.id);
+
+      if (session.step === "subscription_time") {
+        const text = ctx.message.text.trim();
+        const timeRegex = /^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/;
+
+        const user = await this.userService.findByTelegramId(ctx.from.id);
+        const lang = (user?.language as Language) || "uz";
+
+        if (!timeRegex.test(text)) {
+          const messages = {
+            uz: "❌ Noto'g'ri format! Iltimos, HH:mm formatida kiriting (masalan: 09:30)",
+            ru: "❌ Неверный формат! Пожалуйста, введите в формате HH:mm (например: 09:30)",
+            en: "❌ Invalid format! Please enter in HH:mm format (example: 09:30)",
+          };
+          await ctx.reply(messages[lang]);
+          return;
+        }
+
+        const subData = session.subscriptionData;
+        if (!subData) {
+          await ctx.reply("❌ Error: no subscription data");
+          return;
+        }
+
+        const chatId = ctx.chat?.id.toString();
+        const chatType = ctx.chat?.type === "private" ? "private" : "group";
+
+        await this.subscriptionService.createSubscription({
+          chatId,
+          chatType,
+          time: text,
+          category: subData.category,
+          fakultet: subData.fakultet,
+          kurs: subData.kurs,
+          guruh: subData.guruh,
+          url: subData.url,
+        });
+
+        const messages = {
+          uz: `✅ Obuna yaratildi!\n\nHar kuni soat ${text} da jadvalingiz avtomatik yuboriladi.`,
+          ru: `✅ Подписка создана!\n\nВаше расписание будет отправляться автоматически каждый день в ${text}.`,
+          en: `✅ Subscription created!\n\nYour schedule will be sent automatically every day at ${text}.`,
+        };
+
+        this.sessions.delete(ctx.from.id);
+
+        await ctx.reply(messages[lang], {
+          reply_markup: this.keyboardService.getCategoryKeyboard(lang),
+        });
+      }
     });
   }
 

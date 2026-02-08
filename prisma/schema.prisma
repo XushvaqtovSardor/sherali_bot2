@@ -23,8 +23,9 @@ model User {
   updatedAt  DateTime @updatedAt @map("updated_at")
   lastActive DateTime @default(now()) @map("last_active")
 
-  choices Choice[]
-  logs    Log[]
+  choices       Choice[]
+  logs          Log[]
+  subscriptions Subscription[]
 
   @@index([telegramId])
   @@index([lastActive])
@@ -67,4 +68,27 @@ model Admin {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("admins")
+}
+
+model Subscription {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  chatId     String   @map("chat_id") // Telegram chat ID (user yoki group)
+  chatType   String   @map("chat_type") // "private" or "group"
+  category   String
+  fakultet   String?
+  kurs       String
+  guruh      String
+  url        String
+  time       String   // Format: "HH:mm" (e.g., "07:00")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([isActive])
+  @@index([time])
+  @@map("subscriptions")
 }

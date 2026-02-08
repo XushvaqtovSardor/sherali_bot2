@@ -6,6 +6,8 @@ import { TranslationService } from "./services/translation.service";
 import { LoggerService } from "../common/services/logger.service";
 import { ScreenshotModule } from "../screenshot/screenshot.module";
 import { AdminModule } from "../admin/admin.module";
+import { SubscriptionService } from "./services/subscription.service";
+import { SchedulerService } from "./services/scheduler.service";
 
 @Module({
   imports: [ScreenshotModule, AdminModule],
@@ -15,6 +17,8 @@ import { AdminModule } from "../admin/admin.module";
     KeyboardService,
     TranslationService,
     LoggerService,
+    SubscriptionService,
+    SchedulerService,
   ],
   exports: [BotService, UserService],
 })
