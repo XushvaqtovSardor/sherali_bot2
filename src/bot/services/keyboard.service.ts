@@ -287,8 +287,8 @@ export class KeyboardService {
       lang === "ru"
         ? "🔄 Обновить"
         : lang === "en"
-        ? "🔄 Refresh"
-        : "🔄 Yangilash",
+          ? "🔄 Refresh"
+          : "🔄 Yangilash",
       `refresh:${category}:${shortFak}:${shortKurs}:${guruh}`
     );
     keyboard.row();
@@ -429,38 +429,38 @@ export class KeyboardService {
       lang === "ru"
         ? "📊 Статистика"
         : lang === "en"
-        ? "📊 Statistics"
-        : "📊 Statistika",
+          ? "📊 Statistics"
+          : "📊 Statistika",
       "admin:stats"
     );
     keyboard.text(
       lang === "ru"
         ? "👥 Пользователи"
         : lang === "en"
-        ? "👥 Users"
-        : "👥 Foydalanuvchilar",
+          ? "👥 Users"
+          : "👥 Foydalanuvchilar",
       "admin:users"
     );
     keyboard.row();
     keyboard.text(
-      lang === "ru"
-        ? "🗑 Очистить кэш"
-        : lang === "en"
-        ? "🗑 Clear cache"
-        : "🗑 Keshni tozalash",
-      "admin:clear_cache"
-    );
-    keyboard.text(
       lang === "ru" ? "📝 Логи" : lang === "en" ? "📝 Logs" : "📝 Loglar",
       "admin:logs"
+    );
+    keyboard.text(
+      lang === "ru"
+        ? "👨‍💼 Администраторы"
+        : lang === "en"
+          ? "👨‍💼 Admins"
+          : "👨‍💼 Adminlar",
+      "admin:admins"
     );
     keyboard.row();
     keyboard.text(
       lang === "ru"
         ? "📢 Рассылка"
         : lang === "en"
-        ? "📢 Broadcast"
-        : "📢 Xabar yuborish",
+          ? "📢 Broadcast"
+          : "📢 Xabar yuborish",
       "admin:broadcast"
     );
     keyboard.row();
@@ -472,8 +472,8 @@ export class KeyboardService {
       lang === "ru"
         ? "🏠 Главное меню"
         : lang === "en"
-        ? "🏠 Main menu"
-        : "🏠 Asosiy menyu",
+          ? "🏠 Main menu"
+          : "🏠 Asosiy menyu",
       "back:main"
     );
 

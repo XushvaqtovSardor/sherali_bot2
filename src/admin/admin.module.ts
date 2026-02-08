@@ -1,12 +1,11 @@
 import { Module } from "@nestjs/common";
 import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
-import { BotModule } from "../bot/bot.module";
-import { ScreenshotModule } from "../screenshot/screenshot.module";
 
 @Module({
-  imports: [BotModule, ScreenshotModule],
+  imports: [],
   controllers: [AdminController],
   providers: [AdminService],
+  exports: [AdminService],
 })
-export class AdminModule {}
+export class AdminModule { }

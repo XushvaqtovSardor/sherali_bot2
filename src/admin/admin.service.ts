@@ -1,15 +1,54 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ChannelCacheService } from "../screenshot/channel-cache.service";
 import { BotService } from "../bot/bot.service";
 
 @Injectable()
 export class AdminService {
   constructor(
     private prisma: PrismaService,
-    private channelCacheService: ChannelCacheService,
-    private botService: BotService
-  ) {}
+  ) { }
+
+  async isAdmin(telegramId: number): Promise<boolean> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { telegramId: telegramId.toString() },
+    });
+    return !!admin;
+  }
+
+  async addAdmin(telegramId: number | string, username: string): Promise<boolean> {
+    try {
+      await this.prisma.admin.create({
+        data: {
+          telegramId: telegramId.toString(),
+          username: username || "unknown",
+        },
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async removeAdmin(telegramId: number | string): Promise<boolean> {
+    try {
+      await this.prisma.admin.delete({
+        where: { telegramId: telegramId.toString() },
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async listAdmins() {
+    return this.prisma.admin.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getAdmins() {
+    return this.listAdmins();
+  }
 
   async getDashboardStats() {
     const totalUsers = await this.prisma.user.count();
@@ -20,12 +59,10 @@ export class AdminService {
         },
       },
     });
-    const cacheCount = await this.prisma.channelCache.count();
 
     return {
       totalUsers,
       activeUsers,
-      cacheCount,
     };
   }
 
@@ -37,50 +74,18 @@ export class AdminService {
   }
 
   async broadcast(message: string) {
-    const users = await this.prisma.user.findMany();
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const user of users) {
-      try {
-        await this.botService.sendMessage(user.telegramId.toString(), message);
-        successCount++;
-      } catch (error) {
-        failCount++;
-      }
-    }
-
+    // This will be called from bot service
     return {
       success: true,
-      totalUsers: users.length,
-      successCount,
-      failCount,
+      message: "Use /broadcast command in Telegram bot",
     };
   }
 
   async clearCache() {
-    const count = await this.channelCacheService.clearAllCache();
-    return { success: true, deletedCount: count };
-  }
-
-  async getAdmins() {
-    return this.prisma.admin.findMany({
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  async addAdmin(telegramId: string, username: string) {
-    return this.prisma.admin.create({
-      data: {
-        telegramId,
-        username,
-      },
-    });
-  }
-
-  async removeAdmin(id: string) {
-    return this.prisma.admin.delete({
-      where: { id },
-    });
+    // Cache is removed, return success
+    return {
+      success: true,
+      message: "Cache functionality has been removed",
+    };
   }
 }

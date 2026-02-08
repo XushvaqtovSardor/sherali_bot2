@@ -5,9 +5,10 @@ import { KeyboardService } from "./services/keyboard.service";
 import { TranslationService } from "./services/translation.service";
 import { LoggerService } from "../common/services/logger.service";
 import { ScreenshotModule } from "../screenshot/screenshot.module";
+import { AdminModule } from "../admin/admin.module";
 
 @Module({
-  imports: [ScreenshotModule],
+  imports: [ScreenshotModule, AdminModule],
   providers: [
     BotService,
     UserService,
@@ -17,4 +18,4 @@ import { ScreenshotModule } from "../screenshot/screenshot.module";
   ],
   exports: [BotService, UserService],
 })
-export class BotModule {}
+export class BotModule { }

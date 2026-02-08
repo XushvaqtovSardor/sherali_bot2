@@ -29,7 +29,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     if (this.browser) {
       try {
         await this.browser.close();
-      } catch (error) {}
+      } catch (error) { }
     }
   }
 
@@ -41,8 +41,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     const page = await this.browser.newPage();
     page.setDefaultTimeout(60000);
     page.setDefaultNavigationTimeout(60000);
-    await page.setViewport({ width: 1920, height: 1080 });
-    
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 2 });
+
     return page;
   }
 
@@ -70,7 +70,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           if (fs.existsSync(path)) {
             return path;
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     } else if (platform === "darwin") {
       return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -90,7 +90,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           if (fs.existsSync(path)) {
             return path;
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 

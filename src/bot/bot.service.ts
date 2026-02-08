@@ -11,6 +11,7 @@ import { KeyboardService } from "./services/keyboard.service";
 import { TranslationService, Language } from "./services/translation.service";
 import { LoggerService } from "../common/services/logger.service";
 import { ScreenshotService } from "../screenshot/screenshot.service";
+import { AdminService } from "../admin/admin.service";
 
 interface SessionData {
   step?: "language" | "category" | "fakultet" | "kurs" | "guruh";
@@ -31,7 +32,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BotService.name);
   private sessions: Map<number, SessionData> = new Map();
   private isRunning = false;
-  private cacheChannelId: string | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -40,7 +40,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private translationService: TranslationService,
     private loggerService: LoggerService,
     private screenshotService: ScreenshotService,
-  ) {}
+    private adminService: AdminService,
+  ) { }
 
   private sanitizeCacheKey(key: string): string {
     return key.replace(/[\/\\]/g, "-");
@@ -93,13 +94,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.setupCallbacks();
     this.setupErrorHandler();
 
-    this.cacheChannelId = await this.screenshotService.getCacheChannelId();
-    if (this.cacheChannelId) {
-      // this.logger.log(`📺 Cache channel: ${this.cacheChannelId}`);
-    } else {
-      // this.logger.warn("⚠ Cache channel not configured");
-    }
-
     const defaultCommands = [
       { command: "start", description: "Botni ishga tushirish" },
       { command: "menu", description: "Asosiy menyu" },
@@ -111,23 +105,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await this.bot.api.setMyCommands(defaultCommands);
     } catch (error) {
       this.logger.error("❌ Failed to set commands:", error.message);
-    }
-
-    const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-
-    if (adminId && !isNaN(adminId)) {
-      const adminCommands = [
-        ...defaultCommands,
-        { command: "admin", description: "Admin panel" },
-      ];
-
-      try {
-        await this.bot.api.setMyCommands(adminCommands, {
-          scope: { type: "chat", chat_id: adminId },
-        });
-      } catch (error) {
-        this.logger.error(`❌ Failed to set admin commands:`, error.message);
-      }
     }
 
     try {
@@ -253,9 +230,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.command("admin", async (ctx) => {
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
 
-      if (ctx.from.id !== adminId) {
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -263,74 +240,139 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
       const stats = await this.userService.getUserStats();
-      const channelStatus = this.cacheChannelId
-        ? `✅ ${this.cacheChannelId}`
-        : "❌ Not configured";
 
       const message =
         `👨‍💼 Admin Panel\n\n` +
         `📊 Statistics:\n` +
         `👥 Total users: ${stats.total}\n` +
         `📅 Active today: ${stats.today}\n` +
-        `📈 Active this week: ${stats.thisWeek}\n\n` +
-        `📺 Cache Channel: ${channelStatus}`;
+        `📈 Active this week: ${stats.thisWeek}`;
 
       await ctx.reply(message, {
         reply_markup: this.keyboardService.getAdminKeyboard(lang),
       });
     });
 
-    this.bot.command("setchannel", async (ctx) => {
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+    this.bot.command("addadmin", async (ctx) => {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
 
-      const channelId = ctx.message.text.replace("/setchannel", "").trim();
+      // Check if replying to another user's message
+      if (ctx.message.reply_to_message) {
+        const targetUser = ctx.message.reply_to_message.from;
+        const success = await this.adminService.addAdmin(
+          targetUser.id,
+          targetUser.username || targetUser.first_name,
+        );
 
-      if (!channelId) {
-        const currentChannel = this.cacheChannelId || "Not set";
+        if (success) {
+          await ctx.reply(
+            `✅ Admin qo'shildi:\n` +
+            `ID: ${targetUser.id}\n` +
+            `Username: @${targetUser.username || targetUser.first_name}`,
+          );
+        } else {
+          await ctx.reply("❌ Admin qo'shishda xatolik yoki allaqachon admin");
+        }
+        return;
+      }
+
+      // Or use command with user ID
+      const args = ctx.message.text.split(" ");
+      if (args.length < 2) {
         await ctx.reply(
-          `📺 Cache Channel Configuration\n\n` +
-            `Current channel: ${currentChannel}\n\n` +
-            `To set a cache channel, add CACHE_CHANNEL_ID to your .env file:\n` +
-            `CACHE_CHANNEL_ID=@channelname or -100xxxxxxxxxx\n\n` +
-            `⚠️ Make sure the bot is an admin in the channel!`,
+          "❌ Foydalanish:\n" +
+          "1. Foydalanuvchi xabariga reply qiling va /addadmin buyrug'ini yuboring\n" +
+          "2. Yoki: /addadmin <telegram_id> <username>",
         );
         return;
       }
 
-      try {
-        await this.bot.api.getChat(channelId);
-        await this.screenshotService.setCacheChannelId(channelId);
-        this.cacheChannelId = channelId;
+      const telegramId = parseInt(args[1]);
+      const username = args[2] || "unknown";
 
-        await ctx.reply(
-          `⚠️ Channel verified, but configuration should be done via environment variable!\n\n` +
-            `Channel: ${channelId}\n\n` +
-            `Please add this to your .env file and restart the bot:\n` +
-            `CACHE_CHANNEL_ID=${channelId}`,
-        );
+      if (isNaN(telegramId)) {
+        await ctx.reply("❌ Noto'g'ri Telegram ID");
+        return;
+      }
 
-        // this.logger.log(`Cache channel set: ${channelId}`);
-      } catch (error) {
-        this.logger.error(`Failed to set cache channel: ${error.message}`);
+      const success = await this.adminService.addAdmin(telegramId, username);
+      if (success) {
         await ctx.reply(
-          `❌ Failed to set cache channel.\n\n` +
-            `Error: ${error.message}\n\n` +
-            `Make sure:\n` +
-            `1. The channel exists\n` +
-            `2. The bot is an admin in the channel\n` +
-            `3. The channel ID is correct`,
+          `✅ Admin qo'shildi:\n` +
+          `ID: ${telegramId}\n` +
+          `Username: ${username}`,
         );
+      } else {
+        await ctx.reply("❌ Admin qo'shishda xatolik yoki allaqachon admin");
       }
     });
 
-    this.bot.command("broadcast", async (ctx) => {
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+    this.bot.command("removeadmin", async (ctx) => {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
+        return;
+      }
+
+      const args = ctx.message.text.split(" ");
+      if (args.length < 2) {
+        await ctx.reply("❌ Foydalanish: /removeadmin <telegram_id>");
+        return;
+      }
+
+      const telegramId = parseInt(args[1]);
+      if (isNaN(telegramId)) {
+        await ctx.reply("❌ Noto'g'ri Telegram ID");
+        return;
+      }
+
+      // Prevent removing yourself
+      if (telegramId === ctx.from.id) {
+        await ctx.reply("❌ O'zingizni admin ro'yxatidan o'chira olmaysiz");
+        return;
+      }
+
+      const success = await this.adminService.removeAdmin(telegramId);
+      if (success) {
+        await ctx.reply(`✅ Admin o'chirildi: ${telegramId}`);
+      } else {
+        await ctx.reply("❌ Admin topilmadi yoki xatolik yuz berdi");
+      }
+    });
+
+    this.bot.command("listadmins", async (ctx) => {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
+        await ctx.reply("❌ Access denied");
+        return;
+      }
+
+      const admins = await this.adminService.listAdmins();
+      if (admins.length === 0) {
+        await ctx.reply("📭 Adminlar ro'yxati bo'sh");
+        return;
+      }
+
+      let message = `👨‍💼 Adminlar ro'yxati (${admins.length}):\n\n`;
+      admins.forEach((admin, index) => {
+        message += `${index + 1}. @${admin.username}\n`;
+        message += `   ID: ${admin.telegramId}\n\n`;
+      });
+
+      await ctx.reply(message);
+    });
+
+    this.bot.command("broadcast", async (ctx) => {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
         return;
       }
 
@@ -360,9 +402,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
       await ctx.reply(
         `✅ Broadcast complete!\n\n` +
-          `✓ Sent: ${successCount}\n` +
-          `✗ Failed: ${failCount}\n` +
-          `📊 Total: ${users.length}`,
+        `✓ Sent: ${successCount}\n` +
+        `✗ Failed: ${failCount}\n` +
+        `📊 Total: ${users.length}`,
       );
     });
 
@@ -370,39 +412,20 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
       const stats = await this.userService.getUserStats();
-      const allCached = await this.screenshotService.getAllCachedScreenshots();
 
-      let lastUpdateInfo =
-        lang === "ru" ? "Нет кэша" : lang === "en" ? "No cache" : "Kesh yo'q";
-      if (allCached.length > 0) {
-        const latestCache = allCached[0];
-        const dateStr = latestCache.createdAt.toLocaleString(
-          lang === "ru" ? "ru-RU" : lang === "en" ? "en-US" : "uz-UZ",
-        );
-        lastUpdateInfo =
-          lang === "ru"
-            ? `Последнее обновление: ${dateStr}`
-            : lang === "en"
-              ? `Last update: ${dateStr}`
-              : `Oxirgi yangilanish: ${dateStr}`;
-      }
+      const message =
+        `📊 Bot Status\n\n` +
+        `👥 Total users: ${stats.total}\n` +
+        `📅 Active today: ${stats.today}\n` +
+        `📈 Active this week: ${stats.thisWeek}`;
 
-      await ctx.reply(
-        this.translationService.t("statusTitle", lang) +
-          "\n\n" +
-          this.translationService.t("statusBot", lang) +
-          "\n" +
-          this.translationService.t("statusDb", lang) +
-          "\n" +
-          this.translationService.t("statusCache", lang) +
-          "\n\n" +
-          lastUpdateInfo,
-      );
+      await ctx.reply(message);
     });
 
     this.bot.command("send", async (ctx) => {
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -444,8 +467,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
       await ctx.editMessageText(
         this.translationService.t("languageSelected", lang) +
-          "\n\n" +
-          this.translationService.t("welcome", lang),
+        "\n\n" +
+        this.translationService.t("welcome", lang),
         {
           reply_markup: this.keyboardService.getCategoryKeyboard(lang),
         },
@@ -660,32 +683,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             // Ignore
           }
 
-          if (result.fromCache && result.fileId) {
-            await ctx.replyWithPhoto(result.fileId, {
-              caption: this.formatCaption(fakultet, kurs, guruh, false),
-              reply_markup: this.keyboardService.getScheduleActionsKeyboard(
-                category,
-                fakultet,
-                kurs,
-                guruh,
-                lang,
-              ),
-            });
-          } else if (result.filePath) {
-            await this.sendAndCacheScreenshot(
-              ctx,
-              result.filePath,
-              cacheKey,
-              this.formatCaption(fakultet, kurs, guruh, false),
-              this.keyboardService.getScheduleActionsKeyboard(
-                category,
-                fakultet,
-                kurs,
-                guruh,
-                lang,
-              ),
-            );
-          }
+          await ctx.replyWithPhoto(new InputFile(result.filePath), {
+            caption: this.formatCaption(fakultet, kurs, guruh, false),
+            reply_markup: this.keyboardService.getScheduleActionsKeyboard(
+              category,
+              fakultet,
+              kurs,
+              guruh,
+              lang,
+            ),
+          });
+
+          // Delete file after sending
+          await this.screenshotService.deleteLocalFile(result.filePath);
 
           await this.loggerService.log(user.id, "view_schedule", {
             category,
@@ -794,32 +804,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           await ctx.deleteMessage();
           const caption = category === "teachers" ? `👨‍🏫 ${item}` : `🚪 ${item}`;
 
-          if (result.fromCache && result.fileId) {
-            await ctx.replyWithPhoto(result.fileId, {
-              caption,
-              reply_markup: this.keyboardService.getScheduleActionsKeyboard(
-                category,
-                group,
-                item,
-                null,
-                lang,
-              ),
-            });
-          } else if (result.filePath) {
-            await this.sendAndCacheScreenshot(
-              ctx,
-              result.filePath,
-              cacheKey,
-              caption,
-              this.keyboardService.getScheduleActionsKeyboard(
-                category,
-                group,
-                item,
-                null,
-                lang,
-              ),
-            );
-          }
+          await ctx.replyWithPhoto(new InputFile(result.filePath), {
+            caption,
+            reply_markup: this.keyboardService.getScheduleActionsKeyboard(
+              category,
+              group,
+              item,
+              null,
+              lang,
+            ),
+          });
+
+          // Delete file after sending
+          await this.screenshotService.deleteLocalFile(result.filePath);
 
           await this.loggerService.log(user.id, "view_schedule", {
             category,
@@ -930,7 +927,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           const result = await this.screenshotService.getScreenshot(
             url,
             cacheKey,
-            true,
           );
 
           try {
@@ -939,21 +935,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             // Ignore
           }
 
-          if (result.filePath) {
-            await this.sendAndCacheScreenshot(
-              ctx,
-              result.filePath,
-              cacheKey,
-              this.formatCaption(fakultet, kurs, guruh, true),
-              this.keyboardService.getScheduleActionsKeyboard(
-                category,
-                fakultet,
-                kurs,
-                guruh,
-                lang,
-              ),
-            );
-          }
+          await ctx.replyWithPhoto(new InputFile(result.filePath), {
+            caption: this.formatCaption(fakultet, kurs, guruh, true),
+            reply_markup: this.keyboardService.getScheduleActionsKeyboard(
+              category,
+              fakultet,
+              kurs,
+              guruh,
+              lang,
+            ),
+          });
+
+          // Delete file after sending
+          await this.screenshotService.deleteLocalFile(result.filePath);
 
           await this.loggerService.log(user.id, "refresh_schedule", {
             category,
@@ -1079,21 +1073,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.callbackQuery(/^admin:stats$/, async (ctx) => {
       await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
 
       const stats = await this.userService.getUserStats();
-      const allCached = await this.screenshotService.getAllCachedScreenshots();
 
       const message =
         `📊 Statistics\n\n` +
         `👥 Total users: ${stats.total}\n` +
         `📅 Active today: ${stats.today}\n` +
-        `📈 Active this week: ${stats.thisWeek}\n` +
-        `🖼 Cached screenshots: ${allCached.length}`;
+        `📈 Active this week: ${stats.thisWeek}`;
 
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
@@ -1105,8 +1097,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.callbackQuery(/^admin:users$/, async (ctx) => {
       await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -1133,8 +1125,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.callbackQuery(/^admin:logs$/, async (ctx) => {
       await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -1144,14 +1136,42 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         .map((log) => {
           const userName = log.user
             ? log.user.firstName +
-              (log.user.lastName ? " " + log.user.lastName : "")
+            (log.user.lastName ? " " + log.user.lastName : "")
             : "Unknown";
-          const timestamp = log.timestamp.toLocaleString();
-          return `${timestamp} - ${userName}: ${log.action}`;
+          const time = log.timestamp.toLocaleString();
+          return `${time} - ${userName}: ${log.action}`;
         })
         .join("\n");
 
-      const message = `📋 Recent Logs (last 20):\n\n${logList}`;
+      const message = `📝 Recent Logs:\n\n${logList}`;
+
+      const user = await this.userService.findByTelegramId(ctx.from.id);
+      const lang = (user?.language as Language) || "uz";
+
+      await this.safeEditMessageText(ctx, message, {
+        reply_markup: this.keyboardService.getAdminKeyboard(lang),
+      });
+    });
+
+    this.bot.callbackQuery(/^admin:admins$/, async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
+        await ctx.reply("❌ Access denied");
+        return;
+      }
+
+      const admins = await this.adminService.listAdmins();
+      const adminList = admins
+        .map((admin, i) => {
+          return `${i + 1}. @${admin.username}\n   ID: ${admin.telegramId}`;
+        })
+        .join("\n\n");
+
+      const message =
+        `👨‍💼 Adminlar ro'yxati (${admins.length}):\n\n${adminList}\n\n` +
+        `ℹ️ Admin qo'shish: /addadmin buyrug'ini foydalanuvchi xabariga reply qiling\n` +
+        `ℹ️ Admin o'chirish: /removeadmin <telegram_id>`;
 
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
@@ -1163,8 +1183,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.callbackQuery(/^admin:broadcast$/, async (ctx) => {
       await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -1184,46 +1204,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
-    this.bot.callbackQuery(/^admin:clear_cache$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
-        await ctx.reply("❌ Access  denied");
-        return;
-      }
-
-      const user = await this.userService.findByTelegramId(ctx.from.id);
-      const lang = (user?.language as Language) || "uz";
-
-      await this.safeEditMessageText(ctx, "🔄 Clearing cache...");
-
-      try {
-        const deletedCount = await this.screenshotService.clearAllCache();
-
-        const message =
-          `✅ Cache cleared successfully!\n\n` +
-          `🗑 Deleted ${deletedCount} cached entries\n` +
-          `💾 Database cleaned`;
-
-        await this.safeEditMessageText(ctx, message, {
-          reply_markup: this.keyboardService.getAdminKeyboard(lang),
-        });
-      } catch (error) {
-        this.logger.error(`Error clearing cache: ${error.message}`);
-        await this.safeEditMessageText(
-          ctx,
-          "❌ Error clearing cache. Check logs for details.",
-          {
-            reply_markup: this.keyboardService.getAdminKeyboard(lang),
-          },
-        );
-      }
-    });
-
     this.bot.callbackQuery(/^back:admin$/, async (ctx) => {
       await ctx.answerCallbackQuery();
-      const adminId = parseInt(this.configService.get<string>("ADMIN_ID"));
-      if (ctx.from.id !== adminId) {
+      const isAdmin = await this.adminService.isAdmin(ctx.from.id);
+      if (!isAdmin) {
         await ctx.reply("❌ Access denied");
         return;
       }
@@ -1250,52 +1234,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       this.sessions.set(userId, {});
     }
     return this.sessions.get(userId);
-  }
-
-  private async sendAndCacheScreenshot(
-    ctx: any,
-    filePath: string,
-    cacheKey: string,
-    caption: string,
-    replyMarkup: any,
-  ): Promise<void> {
-    try {
-      const sentMessage = await ctx.replyWithPhoto(new InputFile(filePath), {
-        caption,
-        reply_markup: replyMarkup,
-      });
-      const fileId = sentMessage.photo?.[sentMessage.photo.length - 1]?.file_id;
-
-      if (!fileId) {
-        await this.screenshotService.deleteLocalFile(filePath);
-        return;
-      }
-
-      if (this.cacheChannelId) {
-        try {
-          const channelMessage = await this.bot.api.sendPhoto(
-            this.cacheChannelId,
-            fileId,
-            { caption: `📦 Cache: ${cacheKey}` },
-          );
-          await this.screenshotService.saveToCache(
-            cacheKey,
-            channelMessage.message_id,
-            fileId,
-          );
-        } catch (error) {
-          this.logger.error(`Failed to cache to channel: ${error.message}`);
-          await this.screenshotService.saveToCache(cacheKey, 0, fileId);
-        }
-      } else {
-        await this.screenshotService.saveToCache(cacheKey, 0, fileId);
-      }
-
-      await this.screenshotService.deleteLocalFile(filePath);
-    } catch (error) {
-      this.logger.error(`Error in sendAndCacheScreenshot: ${error.message}`);
-      throw error;
-    }
   }
 
   private async safeEditMessageText(
@@ -1334,9 +1272,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     const fakultetName = fakultet && fakultet !== "none" ? fakultet : "";
     const icon = isRefresh ? "🔄 Yangilangan jadval:" : "📅";
 
-    let caption = `${icon}\n🧾 ${
-      fakultetName ? fakultetName + " – " : ""
-    }${kurs} – ${guruh}\n`;
+    let caption = `${icon}\n🧾 ${fakultetName ? fakultetName + " – " : ""
+      }${kurs} – ${guruh}\n`;
     caption += `🕒 ${date}, ${time}\n`;
     caption += `xatolik xaqida xabar bering - @ksh247\n`;
     caption += `📌 @tsuetimebot`;
