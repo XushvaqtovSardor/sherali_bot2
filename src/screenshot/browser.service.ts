@@ -25,6 +25,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
           "--single-process",
           "--disable-accelerated-2d-canvas",
           "--memory-pressure-off",
+          "--disable-blink-features=AutomationControlled",
+          "--disable-features=VizDisplayCompositor",
+          "--dns-prefetch-disable",
         ],
         timeout: 60000,
       });
@@ -49,11 +52,25 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     }
 
     const page = await this.browser.newPage();
-    
+
+    // Set realistic user agent to avoid bot detection
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    // Set extra HTTP headers
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9,uz;q=0.8,ru;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+    });
+
     // Increase timeouts for slow servers
     page.setDefaultTimeout(120000);
     page.setDefaultNavigationTimeout(120000);
-    
+
     // Block unnecessary resources to speed up loading
     await page.setRequestInterception(true);
     page.on('request', (request) => {
@@ -65,7 +82,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         request.continue();
       }
     });
-    
+
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 2 });
 
     return page;

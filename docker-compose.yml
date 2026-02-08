@@ -27,6 +27,16 @@ services:
       - .env
     ports:
       - "3010:3000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    extra_hosts:
+      - "tsue.edupage.org:185.158.175.49"
+    sysctls:
+      - net.ipv4.tcp_keepalive_time=600
+      - net.ipv4.tcp_keepalive_intvl=60
+      - net.ipv4.tcp_keepalive_probes=3
     depends_on:
       db:
         condition: service_healthy

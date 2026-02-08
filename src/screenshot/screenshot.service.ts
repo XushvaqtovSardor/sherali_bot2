@@ -32,7 +32,7 @@ export class ScreenshotService {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         this.logger.warn(`Screenshot attempt ${attempt} failed: ${lastError.message}`);
-        
+
         if (attempt < maxRetries) {
           // Wait before retry (exponential backoff)
           const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
@@ -60,16 +60,28 @@ export class ScreenshotService {
     const page = await this.browserService.createPage();
 
     try {
-      // Use domcontentloaded for faster loading on slow servers
-      // This doesn't wait for all network requests to finish
-      await page.goto(url, {
-        waitUntil: "domcontentloaded",
-        timeout: 120000,
-      });
+      this.logger.log(`Navigating to: ${url}`);
+
+      // Try to navigate with multiple strategies
+      try {
+        await page.goto(url, {
+          waitUntil: ["load", "networkidle2"],
+          timeout: 120000,
+        });
+      } catch (navError) {
+        this.logger.warn(`Primary navigation failed, trying fallback: ${navError.message}`);
+        // Fallback strategy - just wait for DOM
+        await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 120000,
+        });
+      }
+
+      this.logger.log(`Page loaded, waiting for content...`);
 
       // Wait for body to be sure page has some content
       await page.waitForSelector("body", { timeout: 15000 });
-      
+
       // Give a bit more time for dynamic content
       await new Promise((resolve) => setTimeout(resolve, 3000));
 

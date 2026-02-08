@@ -7,16 +7,32 @@
 docker exec sherali_bot sh /app/scripts/check-network.sh
 ```
 
-### 2. DNS muammosi bo'lsa:
+### 2. Tezkor diagnostika:
 ```bash
-# Docker container ichida DNS ni to'g'rilash
+# DNS va connectivity test
+docker exec sherali_bot nslookup tsue.edupage.org
+docker exec sherali_bot ping -c 3 8.8.8.8
+docker exec sherali_bot curl -I https://tsue.edupage.org --max-time 10
+
+# DNS resolverlarni tekshirish
+docker exec sherali_bot cat /etc/resolv.conf
+```
+
+### 3. DNS muammosi bo'lsa:
+```bash
+# Docker containerlarni qayta ishga tushirish DNS sozlamalari bilan
+docker-compose down
+docker-compose up -d
+
+# Yoki manual DNS to'g'rilash
 docker exec -it sherali_bot sh
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 8.8.4.4" >> /etc/resolv.conf
 echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 exit
 ```
 
-### 3. Firewall muammosi bo'lsa:
+### 4. Firewall muammosi bo'lsa:
 Server provayderingiz (DigitalOcean) firewall sozlamalarini tekshiring:
 - Port 443 (HTTPS) ochiq bo'lishi kerak
 - Outbound traffic ruxsat etilgan bo'lishi kerak
