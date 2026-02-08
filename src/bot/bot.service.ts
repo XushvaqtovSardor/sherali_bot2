@@ -188,6 +188,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      if (
+        e.error_code === 400 &&
+        (e.description?.includes("query is too old") ||
+          e.description?.includes("query ID is invalid"))
+      ) {
+        // Callback query timeout - don't log
+        return;
+      }
+
       this.logger.error(`Grammy error in ${e.method}: ${e.description}`);
     });
   }
@@ -499,7 +508,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private setupCallbacks() {
     // ...existing code...
     this.bot.callbackQuery(/^lang_(ru|en|uz)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const lang = ctx.match[1] as Language;
 
       const user = await this.userService.findByTelegramId(ctx.from.id);
@@ -518,7 +527,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.callbackQuery(
       /^cat:(bakalavr|kechki|masofaviy|magistr)$/,
       async (ctx) => {
-        await ctx.answerCallbackQuery();
+        await this.safeAnswerCallbackQuery(ctx);
         const category = ctx.match[1];
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
@@ -542,7 +551,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.bot.callbackQuery(/^cat:(teachers|kabinets)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -561,7 +570,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^fak:([^:]+):(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const category = ctx.match[1];
       const fakultetId = ctx.match[2];
       const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
@@ -588,7 +597,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.callbackQuery(
       /^kurs:(kechki|masofaviy|magistr):(.+)$/,
       async (ctx) => {
-        await ctx.answerCallbackQuery();
+        await this.safeAnswerCallbackQuery(ctx);
         const category = ctx.match[1];
         const kursId = ctx.match[2];
         const kurs = this.keyboardService.decodeCourse(kursId);
@@ -616,7 +625,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.bot.callbackQuery(/^kurs:([^:]+):([^:]+):(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const category = ctx.match[1];
       const fakultetId = ctx.match[2];
       const kursId = ctx.match[3];
@@ -645,7 +654,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^kurs:(teachers|kabinets):(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const category = ctx.match[1];
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
@@ -661,7 +670,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.callbackQuery(
       /^guruh:([^:]+):([^:]+):([^:]+):(.+)$/,
       async (ctx) => {
-        await ctx.answerCallbackQuery();
+        // Answer callback query immediately to avoid timeout
+        await this.safeAnswerCallbackQuery(ctx);
+
         const category = ctx.match[1];
         const fakultetId = ctx.match[2];
         const kursId = ctx.match[3];
@@ -817,7 +828,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.callbackQuery(
       /^guruh:(teachers|kabinets):(.+):(.+)$/,
       async (ctx) => {
-        await ctx.answerCallbackQuery();
+        // Answer callback query immediately to avoid timeout
+        await this.safeAnswerCallbackQuery(ctx);
+
         const category = ctx.match[1];
         const group = ctx.match[2];
         const item = ctx.match[3];
@@ -947,11 +960,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         const user = await this.userService.findByTelegramId(ctx.from.id);
         const lang = (user?.language as Language) || "uz";
 
-        try {
-          await ctx.answerCallbackQuery();
-        } catch (error) {
-          // Ignore
-        }
+        await this.safeAnswerCallbackQuery(ctx);
 
         try {
           await ctx.editMessageCaption({
@@ -1072,7 +1081,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.bot.callbackQuery(/^back:main$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -1082,7 +1091,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^back:category$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -1098,7 +1107,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^back:fakultet:(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const category = ctx.match[1];
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
@@ -1115,7 +1124,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^back:kurs:([^:]+):(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const category = ctx.match[1];
       const fakultetId = ctx.match[2];
       const fakultet = this.keyboardService.decodeFacultyId(fakultetId);
@@ -1135,7 +1144,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^admin:stats$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1159,7 +1168,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^admin:users$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1187,7 +1196,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^admin:logs$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1217,7 +1226,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^admin:admins$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1245,7 +1254,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^admin:broadcast$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1268,7 +1277,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^back:admin$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
       if (!isAdmin) {
         await ctx.reply("❌ Access denied");
@@ -1293,7 +1302,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     // Subscription callbacks
     this.bot.callbackQuery(/^menu:subscription$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -1327,7 +1336,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^sub:create$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -1348,7 +1357,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^sub:disable$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const chatId = ctx.chat?.id.toString();
 
       await this.subscriptionService.deleteSubscription(chatId);
@@ -1368,7 +1377,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^subtime:(.+)$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const time = ctx.match[1];
 
       if (time === "custom") {
@@ -1426,7 +1435,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^sub:cancel$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const user = await this.userService.findByTelegramId(ctx.from.id);
       const lang = (user?.language as Language) || "uz";
 
@@ -1445,7 +1454,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     // Broadcast callbacks
     this.bot.callbackQuery(/^broadcast:confirm$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
 
       if (!isAdmin) {
@@ -1500,7 +1509,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.bot.callbackQuery(/^broadcast:cancel$/, async (ctx) => {
-      await ctx.answerCallbackQuery();
+      await this.safeAnswerCallbackQuery(ctx);
       const isAdmin = await this.adminService.isAdmin(ctx.from.id);
 
       if (!isAdmin) {
@@ -1593,6 +1602,23 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       throw error;
+    }
+  }
+
+  private async safeAnswerCallbackQuery(ctx: any): Promise<void> {
+    try {
+      await ctx.answerCallbackQuery();
+    } catch (error) {
+      if (
+        error.error_code === 400 &&
+        (error.description?.includes("query is too old") ||
+          error.description?.includes("query ID is invalid"))
+      ) {
+        // Query timeout - ignore silently
+        return;
+      }
+      // Log other errors but don't throw
+      this.logger.warn(`Failed to answer callback query: ${error.message}`);
     }
   }
 

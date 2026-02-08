@@ -44,7 +44,7 @@ export class ScreenshotService {
     try {
       await page.goto(url, {
         waitUntil: "networkidle0",
-        timeout: 60000,
+        timeout: 90000,
       });
 
       await page.waitForSelector("body", { timeout: 10000 });
