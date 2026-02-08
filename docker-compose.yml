@@ -20,31 +20,55 @@ services:
       retries: 5
 
   app:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: sherali_bot
     restart: always
     env_file:
       - .env
+    environment:
+      - NODE_ENV=production
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+      - CHROME_BIN=/usr/bin/chromium
     ports:
       - "3010:3000"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-      - 1.1.1.1
-    extra_hosts:
-      - "tsue.edupage.org:185.158.175.49"
-    sysctls:
-      - net.ipv4.tcp_keepalive_time=600
-      - net.ipv4.tcp_keepalive_intvl=60
-      - net.ipv4.tcp_keepalive_probes=3
+    # Use host network mode for better connectivity
+    # Comment this out and use dns settings if you prefer bridge mode
+    network_mode: "host"
+    
+    # If using bridge mode (comment out network_mode above), uncomment below:
+    # dns:
+    #   - 8.8.8.8
+    #   - 8.8.4.4
+    #   - 1.1.1.1
+    # extra_hosts:
+    #   - "tsue.edupage.org:185.158.175.49"
+    # sysctls:
+    #   - net.ipv4.tcp_keepalive_time=600
+    #   - net.ipv4.tcp_keepalive_intvl=60
+    #   - net.ipv4.tcp_keepalive_probes=3
+    
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    shm_size: '2gb'
     depends_on:
       db:
         condition: service_healthy
     command: >
       sh -c "
+        echo 'Starting application...' &&
+        echo 'Testing network connectivity...' &&
+        ping -c 2 8.8.8.8 || echo 'WARNING: Cannot ping Google DNS' &&
+        nslookup tsue.edupage.org 8.8.8.8 || echo 'WARNING: DNS resolution failed' &&
+        echo 'Building application...' &&
         pnpm run build &&
         npx prisma generate &&
         npx prisma migrate deploy &&
+        echo 'Starting production server...' &&
         pnpm run start:prod
       "
 

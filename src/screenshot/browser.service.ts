@@ -93,8 +93,15 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getChromePath(): string {
+    // Priority: Environment variables first
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      this.logger.log(`Using Chromium from PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
       return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    if (process.env.CHROME_BIN) {
+      this.logger.log(`Using Chromium from CHROME_BIN: ${process.env.CHROME_BIN}`);
+      return process.env.CHROME_BIN;
     }
 
     const platform = process.platform;
@@ -110,6 +117,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
+            this.logger.log(`Using Chrome from: ${path}`);
             return path;
           }
         } catch (e) { }
@@ -117,12 +125,12 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     } else if (platform === "darwin") {
       return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     } else {
+      // Linux/Alpine - prioritize Alpine's chromium path
       const possiblePaths = [
-        "/usr/bin/chromium-browser",
-        "/usr/bin/chromium",
-        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",          // Alpine Linux
+        "/usr/bin/chromium-browser",  // Ubuntu/Debian
         "/usr/bin/google-chrome-stable",
-        process.env.CHROME_BIN,
+        "/usr/bin/google-chrome",
       ];
 
       for (const path of possiblePaths) {
@@ -130,12 +138,14 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         try {
           const fs = require("fs");
           if (fs.existsSync(path)) {
+            this.logger.log(`Using Chromium from: ${path}`);
             return path;
           }
         } catch (e) { }
       }
     }
 
+    this.logger.warn("No Chrome/Chromium found, using undefined (will use Puppeteer's bundled Chromium)");
     return undefined;
   }
 }
